@@ -71,7 +71,7 @@ a:hover{text-decoration:underline}
 
 /* nav */
 .nav{background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
-.nav-in{max-width:1080px;margin:auto;padding:12px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.nav-in{max-width:1080px;margin:auto;padding:11px 16px;display:flex;align-items:center;gap:16px}
 .logo{font-size:23px;color:var(--ink);display:flex;align-items:center;gap:9px;line-height:1}
 .logo:hover{text-decoration:none}
 .logo-icon{width:30px;height:30px;flex:none}
@@ -80,13 +80,16 @@ a:hover{text-decoration:underline}
 .hero-logo{display:block;margin-bottom:6px}
 .hero-logo:hover{text-decoration:none}
 .hero-logo-img{width:240px;max-width:72vw;height:auto;display:block;margin:0 auto}
-.nav-links{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
-.nav-links a{color:var(--ink);font-size:14px;padding:6px 10px;border-radius:999px}
+.nav-links{display:flex;gap:2px;flex-wrap:wrap;align-items:center;margin-left:auto}
+.nav-links a{color:var(--ink);font-size:14px;padding:6px 11px;border-radius:999px}
 .nav-links a:hover{background:var(--accent-soft);color:var(--accent);text-decoration:none}
-.nav-search{margin-left:auto;display:flex;flex:1;min-width:160px;max-width:320px}
-.nav-search input{width:100%;padding:8px 13px;font-size:14px;border:1px solid var(--line);
+/* prominent search bar on top */
+.nav-srch{background:var(--card);padding:2px 16px 12px}
+.nav-srch form{position:relative;max-width:660px;margin:auto}
+.nav-srch .mag{position:absolute;left:16px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--muted);pointer-events:none}
+.nav-srch input{width:100%;padding:12px 16px 12px 44px;font-size:15px;border:1px solid var(--line);
   border-radius:999px;background:var(--bg);color:var(--ink);outline:none}
-.nav-search input:focus{border-color:var(--accent)}
+.nav-srch input:focus{border-color:var(--pink);background:var(--card)}
 
 /* hero */
 .hero{position:relative;text-align:center;padding:48px 22px 42px;margin:6px 0 4px;border-radius:28px;
@@ -119,6 +122,20 @@ a:hover{text-decoration:underline}
 .sec h2{font-size:23px;margin:0}
 .sec .more{margin-left:auto;font-size:14px}
 .lead{color:var(--muted);margin:2px 0 0}
+
+/* category page intro banner (real product photo) */
+.pagehead{display:flex;align-items:center;gap:22px;border-radius:24px;margin:6px 0 20px;padding:26px 28px;
+  background:linear-gradient(120deg,#eaf6f0 0%,#fde3ea 100%)}
+.pagehead .ph-txt{flex:1;min-width:0}
+.pagehead h1{margin:0 0 5px;font-size:clamp(25px,4.2vw,36px)}
+.pagehead .ph-txt p{margin:0;color:var(--ink);opacity:.68;font-size:15px}
+.pagehead .ph-img{width:116px;height:116px;border-radius:20px;object-fit:cover;background:#fff;
+  box-shadow:0 6px 20px rgba(196,85,112,.14);flex:none}
+@media(max-width:560px){.pagehead{padding:22px}.pagehead .ph-img{display:none}}
+
+/* filter panel — keep category selection clean */
+.filters-panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px 18px;margin:0 0 20px}
+.filters-panel .facet-group:last-child{margin-bottom:0}
 
 /* tiles */
 .tiles{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(148px,1fr))}
@@ -277,6 +294,8 @@ function offerHTML(o,best){
     (o.in_stock?'':' · mbaroi')+'</span><span class="price '+(o.compare_at?'sale':'')+'">'+
     was+fmt(o.price)+'</span></a>';
 }
+// first product (most popular, since data is pop-sorted) matching a test, with an image
+function firstPhoto(testFn){var p=GP.products.find(function(x){return x.image&&testFn(x);});return p?p.image:'';}
 function badges(p){
   var b='';
   if(p.best) b+='<span class="badge best">Bestseller</span>';
@@ -347,11 +366,21 @@ function collection(cfg){
         return '<a data-area="'+k+'">'+icon(k)+esc(AR[k])+'</a>';}).join('')+'</div>';
   }
   var facetsHTML = facets.map(facetGroup).join('');
+  var hasFilters = cfg.area || facets.length;
 
-  app.innerHTML =
-    '<div class="sec"><h2>'+(cfg.icon?'<span class="hic">'+icon(cfg.icon)+'</span>':'')+esc(cfg.heading)+'</h2></div>'+
-    (cfg.lead?'<p class="lead" style="margin-bottom:16px">'+esc(cfg.lead)+'</p>':'')+
-    areaNav+
+  var head;
+  if(cfg.banner){
+    var bimg = firstPhoto(cfg.filter||function(){return true;});
+    head = '<div class="pagehead"><div class="ph-txt"><h1>'+esc(cfg.heading)+'</h1>'+
+      (cfg.lead?'<p>'+esc(cfg.lead)+'</p>':'')+'</div>'+
+      (bimg?'<img class="ph-img" src="'+esc(bimg)+'" alt="">':'')+'</div>';
+  } else {
+    head = '<div class="sec"><h2>'+(cfg.icon?'<span class="hic">'+icon(cfg.icon)+'</span>':'')+esc(cfg.heading)+'</h2></div>'+
+      (cfg.lead?'<p class="lead" style="margin-bottom:16px">'+esc(cfg.lead)+'</p>':'');
+  }
+
+  app.innerHTML = head + areaNav +
+    (hasFilters?'<div class="filters-panel">'+facetsHTML+'</div>':'')+
     '<div class="toolbar">'+
       '<input type="search" id="q" placeholder="Kërko brenda kësaj faqeje…" autocomplete="off">'+
       '<button class="chip" id="fStock" aria-pressed="false">Vetëm në gjendje</button>'+
@@ -362,7 +391,7 @@ function collection(cfg){
         '<option value="save">Rendit: diferenca më e madhe</option>'+
         '<option value="disc">Rendit: zbritja më e madhe</option>'+
       '</select><span class="count" id="count"></span></div>'+
-    facetsHTML+'<div id="list"></div>';
+    '<div id="list"></div>';
   document.getElementById('sort').value = st.sort;
   var list = document.getElementById('list');
 
@@ -404,23 +433,16 @@ function landing(){
   var best = GP.products.filter(function(p){return p.best;});
   best = (best.length?best:multi).slice(0,8);
 
-  // a representative real product photo for a category (first popular one with an image)
-  function photo(testFn){
-    var p = GP.products.find(function(x){return x.image&&testFn(x);});
-    return p?p.image:'';
-  }
   function circle(href, label, img){
     var bg = img?' style="background-image:url('+esc(img)+')"':'';
     return '<a class="cat" href="'+href+'"><span class="cat-img"'+bg+'></span>'+
       '<span class="cat-t">'+esc(label)+'</span></a>';
   }
   var catCircles = Object.keys(SEC).map(function(k){
-    return circle(k+'.html', SEC[k], photo(function(x){return (x.sections||[]).indexOf(k)>=0;}));
+    return circle(k+'.html', SEC[k], firstPhoto(function(x){return (x.sections||[]).indexOf(k)>=0;}));
   }).join('');
-  // concerns are shown as illustrated icon circles (a concern, not a product)
   var conCircles = Object.keys(CON).map(function(k){
-    return '<a class="cat" href="problema-'+k+'.html"><span class="cat-ic">'+icon(k)+'</span>'+
-      '<span class="cat-t">'+esc(CON[k])+'</span></a>';
+    return circle('problema-'+k+'.html', CON[k], firstPhoto(function(x){return (x.concerns||[]).indexOf(k)>=0;}));
   }).join('');
 
   app.innerHTML =
@@ -497,9 +519,10 @@ document.getElementById('nav').innerHTML =
   '<img class="logo-icon" src="assets/logo-icon.png" alt="">'+wordmark()+'</a>'+
   '<nav class="nav-links"><a href="fytyra.html">Fytyra</a><a href="floket.html">Flokët</a>'+
   '<a href="trupi.html">Trupi</a><a href="makeup.html">Make Up</a>'+
-  '<a href="oferta.html">Oferta</a><a href="bestsellers.html">Bestsellers</a><a href="marka.html">Markat</a></nav>'+
-  '<form class="nav-search" onsubmit="location.href=\'kerko.html?q=\'+encodeURIComponent(this.q.value);return false;">'+
-  '<input name="q" type="search" placeholder="Kërko…"></form></div>';
+  '<a href="oferta.html">Oferta</a><a href="bestsellers.html">Bestsellers</a><a href="marka.html">Markat</a></nav></div>'+
+  '<div class="nav-srch"><form onsubmit="location.href=\'kerko.html?q=\'+encodeURIComponent(this.q.value);return false;">'+
+  '<svg class="mag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg>'+
+  '<input name="q" type="search" placeholder="Kërko produkt ose markë (p.sh. cosrx snail)"></form></div>';
 
 var when = new Date(GP.updated);
 document.getElementById('foot').innerHTML =
@@ -580,19 +603,19 @@ def build_site(products, stores, updated, out_dir):
         "index.html": ("Glass Price — Krahaso çmimet K-beauty në Shqipëri",
                        "Krahaso çmimin dhe gjendjen e çdo produkti K-beauty në dyqanet shqiptare.", "gp.landing();"),
         "bestsellers.html": ("Bestsellers · Glass Price", "Produktet K-beauty më të shitura.",
-                             "gp.collection({heading:'Bestsellers',lead:'Produktet më të kërkuara.',filter:function(p){return p.best;},%s});" % SEC_FACET),
+                             "gp.collection({heading:'Bestsellers',banner:true,lead:'Produktet më të kërkuara.',filter:function(p){return p.best;},%s});" % SEC_FACET),
         "oferta.html": ("Oferta · Glass Price", "Produktet K-beauty me zbritje.",
-                        "gp.collection({heading:'Oferta',lead:'Produktet me zbritje, renditur nga zbritja më e madhe.',filter:function(p){return p.offers.some(function(o){return o.compare_at;});},sort:'disc',%s});" % SEC_FACET),
+                        "gp.collection({heading:'Oferta',banner:true,lead:'Produktet me zbritje, renditur nga zbritja më e madhe.',filter:function(p){return p.offers.some(function(o){return o.compare_at;});},sort:'disc',%s});" % SEC_FACET),
         "marka.html": ("Markat · Glass Price", "Të gjitha markat K-beauty.", "gp.brands();"),
         "produkt.html": ("Produkt · Glass Price", "Krahaso çmimet për këtë produkt.", "gp.product();"),
         "kerko.html": ("Kërko · Glass Price", "Kërko produkte K-beauty.", "gp.search();"),
     }
     for key, label in SECTIONS.items():
         pages[f"{key}.html"] = (f"{label} · Glass Price", f"Produkte K-beauty: {label}.",
-                                "gp.collection({heading:%r,icon:%r,%s,filter:function(p){return (p.sections||[]).indexOf(%r)>=0;}});" % (label, key, SECTION_FACETS[key], key))
+                                "gp.collection({heading:%r,banner:true,%s,filter:function(p){return (p.sections||[]).indexOf(%r)>=0;}});" % (label, SECTION_FACETS[key], key))
     for key, label in CONCERNS.items():
         pages[f"problema-{key}.html"] = (f"{label} · Glass Price", f"Produkte K-beauty për: {label}.",
-                                         "gp.collection({heading:%r,icon:%r,lead:'Produkte që synojnë: %s.',filter:function(p){return (p.concerns||[]).indexOf(%r)>=0;},facets:[{id:'typ',label:'Lloji',map:'types',field:'type'}]});" % (label, key, label, key))
+                                         "gp.collection({heading:%r,banner:true,lead:'Produkte K-beauty për: %s.',filter:function(p){return (p.concerns||[]).indexOf(%r)>=0;},facets:[{id:'typ',label:'Lloji',map:'types',field:'type'}]});" % (label, label, key))
 
     for name, (title, desc, init) in pages.items():
         (out / name).write_text(_page(title, desc, init), encoding="utf-8")
