@@ -2,7 +2,7 @@
 """
 K-beauty price comparison for Albanian stores.
 
-    python kbeauty.py                 fetch all stores, match, build site/index.html
+    python kbeauty.py                 fetch all stores, match, build the site/ folder
     python kbeauty.py --offline       rebuild from data/raw/*.json (no network)
     python kbeauty.py --stores kfarma,beautene
 
@@ -10,7 +10,7 @@ Outputs:
     data/raw/<store>.json   raw API responses (so you can rebuild offline)
     data/products.json      normalized + matched products
     data/matches.csv        every match with its score, for manual review
-    site/index.html         the comparison website (static, one file)
+    site/                   the static multi-page website (see site_build.py)
 """
 import argparse
 import csv
@@ -239,6 +239,13 @@ def parse_shopify(store, prods):
     for p in prods:
         title = clean(p.get("title"))
         brand = clean(p.get("vendor")) if store.get("vendor_is_brand") else None
+        tags = p.get("tags") or []
+        if isinstance(tags, str):
+            tags = [t.strip() for t in tags.split(",") if t.strip()]
+        cats = [fold(t) for t in tags]
+        if p.get("product_type"):
+            cats.append(fold(p["product_type"]))
+        best = any("bestseller" in c or "best seller" in c for c in cats)
         opts = [o.get("name", "").lower() for o in p.get("options", [])]
         variants = p.get("variants", [])
         multi = len(variants) > 1
@@ -263,6 +270,7 @@ def parse_shopify(store, prods):
                 "price": price,
                 "compare_at": cmp_at if cmp_at and price and cmp_at > price else None,
                 "in_stock": bool(v.get("available")), "url": url, "image": img,
+                "cats": cats, "bestseller": best,
             })
     return items
 
@@ -279,6 +287,8 @@ def parse_woocommerce(store, prods):
         vol = (parse_volume(title)
                or parse_volume(strip_tags(p.get("price_html")))
                or parse_volume(strip_tags(p.get("short_description"))))
+        cats = [fold(c.get("name", "")) for c in (p.get("categories") or [])]
+        best = any("bestseller" in c or "best seller" in c for c in cats)
         imgs = p.get("images") or []
         items.append({
             "store": store["id"], "title": title,
@@ -286,6 +296,7 @@ def parse_woocommerce(store, prods):
             "price": price, "compare_at": reg if reg and price and reg > price else None,
             "in_stock": bool(p.get("is_in_stock")), "url": p.get("permalink"),
             "image": imgs[0].get("thumbnail") or imgs[0].get("src") if imgs else None,
+            "cats": cats, "bestseller": best,
         })
     return items
 
@@ -392,6 +403,81 @@ def pretty(title):
     return title
 
 
+# ---------------------------------------------------------------- classification
+# Map each product to a section, a product type and skin concerns. KFarma tags
+# and Beautene categories are reliable; Koral/Glowy give almost nothing, so we
+# also infer from the title. Keywords are folded (accent-stripped, lowercase)
+# and matched as substrings, so Albanian and English spellings both hit.
+# Tune these the same way as the brand list: cheap to extend, review weekly.
+
+# Top-level section. Sunscreen is a skin *type*, not its own section.
+SECTION_KW = {
+    "fytyra":  ["fytyr", "face", "facial", "kujdesi per lekure", "skincare", "lekur",
+                "diell", "sunscreen", "sun cream", "sun serum", "sun stick"],
+    "floket":  ["flok", "hair", "shampo", "balsam", "conditioner", "scalp", "leave in"],
+    "trupi":   ["trup", "body", "duar", "kembe", "hand cream", "foot", "dush", "shower", "scrub trup"],
+    "makeup":  ["make up", "makeup", "make-up", "lipstick", "lip tint", "lip gloss", "mascara",
+                "foundation", "concealer", "fondatin", "blush", "eyeliner", "eyeshadow",
+                "bb cream", "cc cream", "cushion"],
+    "parfume": ["parfum", "perfume", "fragrance", "mist trupi", "eau de", "body mist"],
+    "sete":    ["sete", " set", "set ", " kit", "bundle", "combo", "1+1"],
+}
+# Within Fytyra: skin / eyes / lips. Only skincare eye & lip *care* (not makeup).
+AREA_KW = {
+    "syte":  ["eye cream", "eye serum", "eye patch", "under-eye", "under eye", "eye mask",
+              "eye gel", "rreth syve", "krem syri", "serum syri", "maske syri", "kontur syri"],
+    "buzet": ["lip balm", "lip care", "lip mask", "lip sleeping", "lip oil", "lip scrub",
+              "lip treatment", "lip serum", "balsam buze", "maske buze", "vaj buze", "kujdes buze"],
+}
+CONCERN_KW = {
+    "akne":     ["akne", "acne", "pimple", "blemish", "spot treatment", "pulliz", "breakout", "mbeturina"],
+    "poret":    ["pore", "poret", "yndyr", "oily", "oil control", "sebum", "mitesser", "blackhead", "lares vajor"],
+    "rrudha":   ["rrudh", "wrinkle", "anti-age", "antiage", "aging", "plakj", "firming", "elasticit",
+                 "collagen", "kolagjen", "lifting", "retinol", "retinal", "peptide"],
+    "njolla":   ["hiperpigment", "pigment", "njoll", "dark spot", "brighten", "zbardh", "whitening",
+                 "vitamin c", "glow", "ndricim", "radiance", "melasma"],
+    "skuqje":   ["skuqje", "redness", "sensitive", "ndjesh", "cica", "centella", "calming", "qetesu",
+                 "soothing", "madecassoside", "barrier", "relief"],
+    "hidratim": ["hidrat", "hydrat", "dehidrat", "dry skin", "thate", "hyaluron", "moistur",
+                 "ceramide", "nourish", "panthenol"],
+}
+# Product *form* (not purpose — "anti-age"/"spot" live in CONCERN_KW instead, so
+# they don't mislabel a cleanser or serum). Order matters: first match wins.
+TYPE_KW = [
+    # sunscreen needs a real sun/UV word — bare "SPF" also appears on makeup cushions
+    ("krem_dielli", ["sunscreen", "suncream", "sun cream", "sun stick", "sun serum", "sun fluid",
+                     "sun gel", " sun ", "krem dielli", "mbrojtje nga dielli", "uv "]),
+    ("trajtim",     ["acne patch", "pimple patch", "spot patch", "patch akne", "spot treatment",
+                     "spot corrector", "blemish patch", "cica patch"]),
+    ("maske",       ["sheet mask", "maske", " mask", "sleeping pack", "wash off", "clay mask", "modeling pack"]),
+    ("pastrues",    ["cleanser", "cleansing", "pastrues", "lares", "foam", "micellar", "face wash",
+                     "makeup remover", "gel larje", "cleansing oil", "cleansing balm"]),
+    ("toner",       ["toner", "tonik", "essence toner"]),
+    ("serum",       ["serum", "esence", "essence", "ampoule", "ampule", "booster"]),
+    ("hidratues",   ["moisturiz", "moisturis", "krem hidrat", " cream", "krem ", "locion", "lotion",
+                     "emulsion", "gel krem", "balm", "balsam"]),
+]
+
+
+def classify(members):
+    """return (sections, area, type, concerns) for a cluster of store listings"""
+    text = " " + " ".join(fold(m["title"]) for m in members) + " " + \
+           " ".join(c for m in members for c in m.get("cats", [])) + " "
+    sections = [s for s, kws in SECTION_KW.items() if any(k in text for k in kws)]
+    area = None
+    if any(k in text for k in AREA_KW["syte"]):
+        area = "syte"
+    elif any(k in text for k in AREA_KW["buzet"]):
+        area = "buzet"
+    if area and "fytyra" not in sections:      # eye/lip care implies face skincare
+        sections.append("fytyra")
+    if "fytyra" in sections and area is None:
+        area = "lekura"
+    ptype = next((t for t, kws in TYPE_KW if any(k in text for k in kws)), None)
+    concerns = [c for c, kws in CONCERN_KW.items() if any(k in text for k in kws)]
+    return sections, area, ptype, concerns
+
+
 def build_products(items, clusters, brand_display):
     products = []
     for c in clusters:
@@ -402,14 +488,25 @@ def build_products(items, clusters, brand_display):
             ({k: it[k] for k in ("store", "price", "compare_at", "in_stock", "url")} for it in members),
             key=lambda o: (not o["in_stock"], o["price"] if o["price"] is not None else 1e12))
         bkey = lead["brand_key"]
+        sections, area, ptype, concerns = classify(members)
         products.append({
             "name": pretty(lead["title"]),
             "brand": brand_display.get(bkey) or (lead["brand"] or bkey).title(),
             "volume": next((m["volume"] for m in members if m["volume"]), None),
             "image": next((m["image"] for m in members if m["image"]), None),
             "offers": offers,
+            "sections": sections, "area": area, "type": ptype, "concerns": concerns,
+            "best": any(m.get("bestseller") for m in members),
         })
-    products.sort(key=lambda p: (-len(p["offers"]), p["brand"].lower(), p["name"].lower()))
+    # Popularity proxy (no sales data): a store tagging it "bestseller" is the
+    # strongest signal; carried by more stores = more mainstream; in stock counts.
+    # This is the default order on every page.
+    for p in products:
+        in_stock = any(o["in_stock"] for o in p["offers"])
+        p["pop"] = (5 if p["best"] else 0) + 2 * len(p["offers"]) + (1 if in_stock else 0)
+    products.sort(key=lambda p: (-p["pop"], -len(p["offers"]), p["brand"].lower(), p["name"].lower()))
+    for i, p in enumerate(products):
+        p["i"] = i
     return products
 
 
@@ -429,14 +526,7 @@ def write_match_report(items, clusters, scores, path):
 
 # ---------------------------------------------------------------- site
 
-
-def build_site(products, stores, updated, out_path):
-    payload = {"updated": updated, "stores": {s["id"]: s["name"] for s in stores},
-               "products": products}
-    data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
-    tpl = (Path(__file__).parent / "template.html").read_text(encoding="utf-8")
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(tpl.replace("__DATA__", data), encoding="utf-8")
+from site_build import build_site  # noqa: E402
 
 # ---------------------------------------------------------------- main
 
@@ -445,7 +535,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--offline", action="store_true", help="use saved data/raw/*.json, no network")
     ap.add_argument("--stores", help="comma-separated store ids, default all")
-    ap.add_argument("--out", default="site/index.html")
+    ap.add_argument("--out", default="site", help="output directory for the static site")
     args = ap.parse_args()
 
     stores = STORES
@@ -490,13 +580,13 @@ def main():
     Path("data/products.json").write_text(json.dumps(products, ensure_ascii=False, indent=1), encoding="utf-8")
     write_match_report(items, clusters, scores, "data/matches.csv")
     updated = datetime.now(timezone.utc).isoformat(timespec="minutes")
-    build_site(products, stores, updated, Path(args.out))
+    n_pages = build_site(products, stores, updated, Path(args.out))
 
     multi = sum(1 for p in products if len(p["offers"]) > 1)
     guessed = sum(1 for it in items if it["brand_guessed"])
     print(f"\n{len(items)} items -> {len(products)} products, {multi} found in 2+ stores")
     print(f"{guessed} items had no known brand (first word used); add them to EXTRA_BRANDS")
-    print(f"Review matches in data/matches.csv, site at {args.out}")
+    print(f"Review matches in data/matches.csv, built {n_pages} pages at {args.out}/index.html")
 
 
 if __name__ == "__main__":

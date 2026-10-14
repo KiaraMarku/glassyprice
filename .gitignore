@@ -6,3 +6,4 @@ data/matches.csv
 data/products.json
 site/
 dist/
+shot-*.png

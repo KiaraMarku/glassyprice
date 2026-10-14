@@ -1,0 +1,542 @@
+#!/usr/bin/env python3
+"""
+Multi-page static site generator for Glass Price.
+
+build_site(products, stores, updated, out_dir) writes:
+    <out>/data.js            window.GP = {...} shared by every page (works from file://)
+    <out>/assets/app.css     the Milky Mauve theme
+    <out>/assets/app.js      shared nav, rendering, filtering
+    <out>/index.html         landing page
+    <out>/bestsellers.html   <out>/oferta.html
+    <out>/<section>.html     fytyra, floket, trupi, makeup, dielli, parfume, sete
+    <out>/problema-*.html    one page per skin concern
+    <out>/marka.html         brand index (?b=slug filters to one brand)
+    <out>/produkt.html       product detail (?p=<id>)
+    <out>/kerko.html         search
+
+Pages are flat files sharing one data.js + app.css + app.js, so the whole site
+is a handful of tiny HTML files plus one data file. Double-click index.html to
+preview offline, or deploy the folder to Cloudflare Pages unchanged.
+"""
+import json
+import shutil
+from pathlib import Path
+
+BRAND_DIR = Path(__file__).parent / "brand"
+
+# Albanian display labels. Keys must match kbeauty.classify().
+SECTIONS = {
+    "fytyra": "Fytyra", "floket": "Flokët", "trupi": "Trupi",
+    "makeup": "Make Up", "parfume": "Parfume", "sete": "Sete",
+}
+AREAS = {"lekura": "Lëkura", "syte": "Sytë", "buzet": "Buzët"}
+CONCERNS = {
+    "akne": "Akne", "poret": "Poret & Yndyra", "rrudha": "Rrudha & Plakje",
+    "njolla": "Njolla & Hiperpigmentim", "skuqje": "Skuqje & Ndjeshmëri", "hidratim": "Hidratim",
+}
+TYPES = {
+    "pastrues": "Pastrues", "toner": "Toner", "serum": "Serum & Esencë",
+    "hidratues": "Hidratues", "maske": "Maskë", "krem_dielli": "Krem Dielli",
+    "trajtim": "Trajtim (njolla/akne)",
+}
+
+CSS = r""":root{
+  color-scheme:light;      /* always light — ignore the OS dark preference */
+  /* palette matched to the logo: mint green + pastel pink on soft white */
+  --bg:#fdf7f9; --card:#ffffff; --ink:#3a3137; --muted:#8c8187; --line:#efe6ea;
+  --accent:#bb4e64;        /* links, buttons, cheapest — the logo pink, deepened for AA */
+  --accent-soft:#fdeaef;   /* cheapest row + active chips */
+  --brand-mint:#6fbda2; --brand-pink:#e08e9b;   /* logo wordmark: glass / price */
+  --lilac:#fbe2ea; --lilac-ink:#b0395d;          /* bestseller badge (pink) */
+  --sage:#d9efe3; --sage-ink:#276b4d;            /* in-stock badge (mint) */
+  --peach:#fbe7db; --peach-ink:#a8451b;          /* sale badge */
+  --no:#a79da2;
+  --shadow:0 1px 2px rgba(59,46,53,.04), 0 6px 20px rgba(158,74,110,.06);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+h1,h2,h3,.logo{font-family:Fraunces,Georgia,"Times New Roman",serif;font-weight:600;letter-spacing:-.01em}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.wrap{max-width:1080px;margin:auto;padding:20px 16px 48px}
+
+/* nav */
+.nav{background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+.nav-in{max-width:1080px;margin:auto;padding:12px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.logo{font-size:23px;color:var(--ink);display:flex;align-items:center;gap:9px;line-height:1}
+.logo:hover{text-decoration:none}
+.logo-icon{width:30px;height:30px;flex:none}
+.logo b{color:var(--brand-mint);font-weight:600}
+.logo i{color:var(--brand-pink);font-weight:600;font-style:normal}
+.hero-logo{display:block;margin-bottom:6px}
+.hero-logo:hover{text-decoration:none}
+.hero-logo-img{width:240px;max-width:72vw;height:auto;display:block;margin:0 auto}
+.nav-links{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.nav-links a{color:var(--ink);font-size:14px;padding:6px 10px;border-radius:999px}
+.nav-links a:hover{background:var(--accent-soft);color:var(--accent);text-decoration:none}
+.nav-search{margin-left:auto;display:flex;flex:1;min-width:160px;max-width:320px}
+.nav-search input{width:100%;padding:8px 13px;font-size:14px;border:1px solid var(--line);
+  border-radius:999px;background:var(--bg);color:var(--ink);outline:none}
+.nav-search input:focus{border-color:var(--accent)}
+
+/* hero */
+.hero{text-align:center;padding:40px 16px 26px}
+.hero h1{font-size:clamp(30px,6vw,46px);margin:0 0 8px}
+.hero h1 em{font-style:italic;color:var(--accent)}
+.hero p{color:var(--muted);font-size:17px;margin:0 auto 20px;max-width:540px}
+.hero .search{max-width:460px;margin:auto}
+.hero .search input{width:100%;padding:14px 18px;font-size:16px;border:1px solid var(--line);
+  border-radius:999px;background:var(--card);color:var(--ink);outline:none;box-shadow:var(--shadow)}
+.hero .search input:focus{border-color:var(--accent)}
+
+/* section headers */
+.sec{margin:34px 0 14px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.sec h2{font-size:23px;margin:0}
+.sec .more{margin-left:auto;font-size:14px}
+.lead{color:var(--muted);margin:2px 0 0}
+
+/* tiles */
+.tiles{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(148px,1fr))}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 16px;
+  display:flex;flex-direction:column;align-items:flex-start;gap:9px;color:var(--ink);box-shadow:var(--shadow);transition:.12s}
+.tile:hover{text-decoration:none;border-color:var(--accent);transform:translateY(-2px)}
+.tile .tic{width:40px;height:40px;color:var(--sage-ink);background:var(--sage);
+  border-radius:12px;padding:8px;display:flex;align-items:center;justify-content:center}
+.tile .tic svg{width:100%;height:100%}
+.tile .t{font-weight:600;font-size:15px}
+.tile .c{color:var(--muted);font-size:13px;margin-top:-5px}
+
+/* section heading icon */
+.sec h2 .hic{width:22px;height:22px;color:var(--accent);vertical-align:-4px;margin-right:9px}
+
+/* area sub-nav */
+.subnav{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 20px}
+.subnav a{padding:8px 15px;border-radius:999px;border:1px solid var(--line);background:var(--card);
+  color:var(--ink);font-size:14px;display:inline-flex;align-items:center;gap:7px}
+.subnav a:hover{border-color:var(--accent);text-decoration:none}
+.subnav a.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.subnav a svg{width:16px;height:16px}
+
+/* toolbar + chips */
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 16px}
+.toolbar input[type=search]{flex:1;min-width:180px;padding:11px 14px;font-size:15px;
+  border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);outline:none}
+.toolbar input[type=search]:focus{border-color:var(--accent)}
+.chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;
+  padding:7px 13px;font-size:13px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center}
+.chip:hover{border-color:var(--accent)}
+.chip svg{width:15px;height:15px;margin-right:6px}
+.chip[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+select.chip{appearance:none}
+.facets{display:flex;gap:7px;flex-wrap:wrap;margin:0}
+.facet-group{margin:0 0 12px}
+.fg-label{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700;margin:0 0 8px}
+.count{color:var(--muted);font-size:13px;margin-left:auto}
+
+/* product grid + cards */
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;
+  display:flex;flex-direction:column;gap:11px;box-shadow:var(--shadow)}
+.card:hover{border-color:var(--accent)}
+.card .top{display:flex;gap:12px}
+.card .top a.img{flex:none}
+.card img{width:70px;height:70px;object-fit:cover;border-radius:12px;background:var(--line)}
+.brand{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--accent);font-weight:700}
+.name{font-weight:600;line-height:1.3}
+.name a{color:var(--ink)}
+.vol{color:var(--muted);font-size:13px;margin-top:2px}
+.badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.badge{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px}
+.badge.stock{background:var(--sage);color:var(--sage-ink)}
+.badge.sale{background:var(--peach);color:var(--peach-ink)}
+.badge.best{background:var(--lilac);color:var(--lilac-ink)}
+.offers{display:flex;flex-direction:column;gap:4px}
+.offer{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:11px;color:inherit;
+  border:1px solid transparent}
+.offer:hover{border-color:var(--line);text-decoration:none}
+.offer.best{background:var(--accent-soft)}
+.offer.out{color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--sage-ink)}
+.offer.out .dot{background:var(--no)}
+.store{flex:1;font-size:14px}
+.tag{font-size:11px;font-weight:700;color:var(--accent);margin-left:5px}
+.price{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.was{color:var(--muted);text-decoration:line-through;font-size:12px;margin-right:5px;font-weight:400}
+.price.sale{color:var(--peach-ink)}
+.more-btn{grid-column:1/-1;justify-self:center;margin-top:8px}
+.empty{grid-column:1/-1;text-align:center;color:var(--muted);padding:48px 0}
+
+/* product detail */
+.detail{display:grid;gap:26px;grid-template-columns:1fr;max-width:720px}
+.detail .hero-img{width:100%;max-width:300px;aspect-ratio:1;object-fit:cover;border-radius:18px;
+  background:var(--line);box-shadow:var(--shadow)}
+.detail h1{font-size:28px;margin:8px 0 4px}
+.detail .offers{margin-top:8px}
+.detail .offer{padding:13px 15px;font-size:16px;border:1px solid var(--line)}
+.save{background:var(--sage);color:var(--sage-ink);display:inline-block;padding:5px 12px;
+  border-radius:999px;font-size:13px;font-weight:600;margin-top:10px}
+.back{display:inline-block;margin-bottom:10px;font-size:14px}
+
+/* footer */
+footer{border-top:1px solid var(--line);background:var(--card)}
+.foot-in{max-width:1080px;margin:auto;padding:22px 16px 34px;color:var(--muted);font-size:13px}
+.foot-in a{color:var(--accent)}
+.foot-in .tag-line{font-family:Fraunces,Georgia,serif;font-size:16px;color:var(--ink);margin-bottom:8px}
+"""
+
+JS = r"""(function(){
+var GP = window.GP, S = GP.stores;
+var SEC = GP.labels.sections, AR = GP.labels.areas, CON = GP.labels.concerns, TYP = GP.labels.types;
+var PAGE = 48;
+
+// line icons (stroke = currentColor)
+var ICON = {
+  fytyra:'<circle cx="12" cy="12" r="8"/><path d="M9.3 10h.01M14.7 10h.01M9 14c1.2 1.3 4.8 1.3 6 0"/>',
+  floket:'<path d="M5 21c0-7 2-13 7-13s7 6 7 13"/><path d="M9 21c0-6 1-10 3-10s3 4 3 10"/>',
+  trupi:'<circle cx="12" cy="5" r="2.3"/><path d="M7.5 22v-6l-1.8-1 1.8-5A3 3 0 0 1 10.3 8h3.4a3 3 0 0 1 2.8 2l1.8 5-1.8 1v6"/>',
+  makeup:'<rect x="8.5" y="12" width="6.5" height="9" rx="1.4"/><path d="M9.6 12l.9-7 3 1-1 6"/>',
+  parfume:'<rect x="8" y="9" width="8" height="12" rx="2"/><path d="M10 9V6h4v3"/><path d="M11 3h2v2h-2z"/>',
+  sete:'<rect x="4" y="9" width="16" height="11" rx="1.3"/><path d="M4 13h16M12 9v11"/><path d="M12 9c-3 0-4.5-.6-4.5-2S9 5 12 9zM12 9c3 0 4.5-.6 4.5-2S15 5 12 9z"/>',
+  lekura:'<circle cx="12" cy="12" r="7.5"/><path d="M12 8c1.5 1.6 2 2.6 2 4a2 2 0 1 1-4 0c0-1.4.5-2.4 2-4z"/>',
+  syte:'<path d="M2.5 12S6.5 6 12 6s9.5 6 9.5 6-4 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.6"/>',
+  buzet:'<path d="M4 12s3-3 8-3 8 3 8 3-3 4-8 4-8-4-8-4z"/><path d="M4 12c2-2 5-2 8 0 3-2 6-2 8 0"/>',
+  pastrues:'<rect x="7.5" y="9" width="9" height="12" rx="2"/><path d="M9.5 9V6h5v3"/><path d="M9.5 13h5"/>',
+  toner:'<rect x="8" y="8" width="8" height="13" rx="2"/><path d="M10 8V5h4v3"/><path d="M8 12.5h8"/>',
+  serum:'<rect x="9" y="11" width="6" height="10" rx="1.5"/><path d="M10 11V7.5h4V11"/><path d="M12 7.5V3"/>',
+  hidratues:'<rect x="6" y="10" width="12" height="9" rx="2"/><path d="M6.5 10l1-3h9l1 3"/><path d="M9 7V5h6v2"/>',
+  maske:'<path d="M12 3c5 0 7 3 7 7 0 5-3 11-7 11s-7-6-7-11c0-4 2-7 7-7z"/><path d="M9.3 10h.01M14.7 10h.01M9.5 15c1 .8 4 .8 5 0"/>',
+  krem_dielli:'<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19"/>',
+  trajtim:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
+  antiage:'<path d="M7 3h10M7 21h10"/><path d="M8 3c0 4 8 5 8 9s-8 5-8 9"/><path d="M16 3c0 4-8 5-8 9s8 5 8 9"/>',
+  akne:'<circle cx="12" cy="12" r="8"/><circle cx="14.3" cy="9.7" r="1.4"/>',
+  poret:'<circle cx="8" cy="8" r="1.1"/><circle cx="14" cy="7" r="1.1"/><circle cx="17" cy="12" r="1.1"/><circle cx="11" cy="12" r="1.1"/><circle cx="7" cy="14" r="1.1"/><circle cx="14.5" cy="16" r="1.1"/>',
+  rrudha:'<path d="M4 8c3-1 13-1 16 0M4 13c3-1 13-1 16 0M4 18c3-1 13-1 16 0"/>',
+  njolla:'<path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>',
+  skuqje:'<path d="M20 4C9 4 4 10 4 20c10 0 16-5 16-16z"/><path d="M4.5 19.5C8 14 12 11 18 9"/>',
+  hidratim:'<path d="M12 3c4 6 7 9 7 12a7 7 0 1 1-14 0c0-3 3-6 7-12z"/><path d="M9 14.5a3 3 0 0 0 3 3"/>'
+};
+function icon(k){return ICON[k]?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ICON[k]+'</svg>':'';}
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function fold(s){return (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();}
+function fmt(n){return n==null?'':n.toLocaleString('sq-AL').replace(/[\s, ]/g,' ')+' L';}
+function volfmt(v){return v?v.replace(/^([\d.]+)(\D+)$/,'$1 $2').replace('pcs','copë').replace('pairs','palë'):'';}
+function slug(s){return fold(s).replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');}
+function qp(k){return new URLSearchParams(location.search).get(k);}
+function wordmark(){return '<span class="w"><b>glass</b><i>price</i></span>';}
+
+GP.products.forEach(function(p){
+  var ins = p.offers.filter(function(o){return o.in_stock&&o.price!=null;});
+  p._min = ins.length?Math.min.apply(null,ins.map(function(o){return o.price;})):Infinity;
+  p._max = ins.length?Math.max.apply(null,ins.map(function(o){return o.price;})):0;
+  p._save = ins.length>1?p._max-p._min:0;
+  p._any = ins.length>0;
+  p._disc = 0;
+  p.offers.forEach(function(o){if(o.compare_at&&o.price){
+    p._disc=Math.max(p._disc,Math.round((1-o.price/o.compare_at)*100));}});
+  p._hay = fold([p.brand,p.name,p.volume,(p.sections||[]).join(' '),(p.concerns||[]).join(' ')].join(' '));
+});
+
+function offerHTML(o,best){
+  var was = o.compare_at?'<span class="was">'+fmt(o.compare_at)+'</span>':'';
+  return '<a class="offer '+(o.in_stock?'':'out')+' '+(best?'best':'')+'" href="'+esc(o.url)+
+    '" target="_blank" rel="noopener"><span class="dot"></span><span class="store">'+
+    esc(S[o.store]||o.store)+(best?'<span class="tag">më i lirë</span>':'')+
+    (o.in_stock?'':' · mbaroi')+'</span><span class="price '+(o.compare_at?'sale':'')+'">'+
+    was+fmt(o.price)+'</span></a>';
+}
+function badges(p){
+  var b='';
+  if(p.best) b+='<span class="badge best">Bestseller</span>';
+  if(p._disc>0) b+='<span class="badge sale">-'+p._disc+'%</span>';
+  if(p._any) b+='<span class="badge stock">Në gjendje</span>';
+  return b?'<div class="badges">'+b+'</div>':'';
+}
+function card(p){
+  var offers = p.offers.map(function(o){
+    return offerHTML(o, o.in_stock&&o.price===p._min&&p.offers.length>1);}).join('');
+  var img = p.image?'<img loading="lazy" src="'+esc(p.image)+'" alt="">':'<img alt="">';
+  var href = 'produkt.html?p='+p.i;
+  return '<article class="card"><div class="top"><a class="img" href="'+href+'">'+img+'</a><div>'+
+    '<div class="brand">'+esc(p.brand)+'</div><div class="name"><a href="'+href+'">'+esc(p.name)+'</a></div>'+
+    (p.volume?'<div class="vol">'+esc(volfmt(p.volume))+'</div>':'')+badges(p)+'</div></div>'+
+    '<div class="offers">'+offers+'</div></article>';
+}
+
+function grid(list, mount, shown){
+  shown = shown||PAGE;
+  if(!list.length){mount.innerHTML='<div class="grid"><div class="empty">Asnjë produkt nuk u gjet.</div></div>';return;}
+  var html = '<div class="grid">'+list.slice(0,shown).map(card).join('');
+  if(list.length>shown) html += '<button class="chip more-btn" id="more">Shfaq më shumë ('+(list.length-shown)+')</button>';
+  html += '</div>';
+  mount.innerHTML = html;
+  var m = document.getElementById('more');
+  if(m) m.onclick = function(){grid(list,mount,shown+PAGE);};
+}
+
+function sortList(list,how){
+  list = list.slice();
+  if(how==='cheap') list.sort(function(a,b){return a._min-b._min;});
+  else if(how==='save') list.sort(function(a,b){return b._save-a._save;});
+  else if(how==='disc') list.sort(function(a,b){return b._disc-a._disc;});
+  // 'pop' (default): keep the data.js order, which Python sorted by popularity
+  return list;
+}
+
+// a labelled group of filter chips, each with an icon
+function facetGroup(id, label, map, dataAttr){
+  return '<div class="facet-group"><div class="fg-label">'+esc(label)+'</div>'+
+    '<div class="facets" id="'+id+'">'+Object.keys(map).map(function(k){
+      return '<button class="chip" '+dataAttr+'="'+k+'">'+icon(k)+esc(map[k])+'</button>';
+    }).join('')+'</div></div>';
+}
+
+// ---- generic collection page ----
+function collection(cfg){
+  var app = document.getElementById('app');
+  var base = GP.products.filter(cfg.filter||function(){return true;});
+  var st = {q:'', stock:false, multi:false, sort:cfg.sort||'pop', area:'', con:'', typ:''};
+
+  var areaNav = '';
+  if(cfg.area){
+    areaNav = '<div class="subnav" id="fa"><a data-area="" class="active">Të gjitha</a>'+
+      Object.keys(AR).map(function(k){
+        return '<a data-area="'+k+'">'+icon(k)+esc(AR[k])+'</a>';}).join('')+'</div>';
+  }
+  var facetsHTML = '';
+  if(cfg.types) facetsHTML += facetGroup('ft','Lloji', TYP, 'data-typ');
+  if(cfg.concerns) facetsHTML += facetGroup('fc','Problematika', CON, 'data-con');
+
+  app.innerHTML =
+    '<div class="sec"><h2>'+(cfg.icon?'<span class="hic">'+icon(cfg.icon)+'</span>':'')+esc(cfg.heading)+'</h2></div>'+
+    (cfg.lead?'<p class="lead" style="margin-bottom:16px">'+esc(cfg.lead)+'</p>':'')+
+    areaNav+
+    '<div class="toolbar">'+
+      '<input type="search" id="q" placeholder="Kërko brenda kësaj faqeje…" autocomplete="off">'+
+      '<button class="chip" id="fStock" aria-pressed="false">Vetëm në gjendje</button>'+
+      '<button class="chip" id="fMulti" aria-pressed="false">Në 2+ dyqane</button>'+
+      '<select class="chip" id="sort">'+
+        '<option value="pop">Rendit: më të njohurat</option>'+
+        '<option value="cheap">Rendit: çmimi më i ulët</option>'+
+        '<option value="save">Rendit: diferenca më e madhe</option>'+
+        '<option value="disc">Rendit: zbritja më e madhe</option>'+
+      '</select><span class="count" id="count"></span></div>'+
+    facetsHTML+'<div id="list"></div>';
+  document.getElementById('sort').value = st.sort;
+  var list = document.getElementById('list');
+
+  function run(){
+    var terms = fold(st.q).split(/\s+/).filter(Boolean);
+    var r = base.filter(function(p){
+      return terms.every(function(t){return p._hay.indexOf(t)>=0;}) &&
+        (!st.stock||p._any) && (!st.multi||p.offers.length>1) &&
+        (!st.area||p.area===st.area) &&
+        (!st.con||(p.concerns||[]).indexOf(st.con)>=0) &&
+        (!st.typ||p.type===st.typ);
+    });
+    r = sortList(r, st.sort);
+    document.getElementById('count').textContent = r.length+' produkte';
+    grid(r, list);
+  }
+  var t;
+  document.getElementById('q').addEventListener('input',function(e){
+    clearTimeout(t);t=setTimeout(function(){st.q=e.target.value;run();},120);});
+  document.getElementById('fStock').onclick=function(e){st.stock=!st.stock;e.target.setAttribute('aria-pressed',st.stock);run();};
+  document.getElementById('fMulti').onclick=function(e){st.multi=!st.multi;e.target.setAttribute('aria-pressed',st.multi);run();};
+  document.getElementById('sort').onchange=function(e){st.sort=e.target.value;run();};
+  if(cfg.area) document.querySelectorAll('#fa a').forEach(function(b){
+    b.onclick=function(){st.area=b.dataset.area;
+      document.querySelectorAll('#fa a').forEach(function(x){x.className=(x===b?'active':'');});run();};});
+  if(cfg.types) document.querySelectorAll('#ft .chip').forEach(function(b){
+    b.onclick=function(){var k=b.dataset.typ;st.typ=st.typ===k?'':k;
+      document.querySelectorAll('#ft .chip').forEach(function(x){x.setAttribute('aria-pressed',x===b&&!!st.typ);});run();};});
+  if(cfg.concerns) document.querySelectorAll('#fc .chip').forEach(function(b){
+    b.onclick=function(){var k=b.dataset.con;st.con=st.con===k?'':k;
+      document.querySelectorAll('#fc .chip').forEach(function(x){x.setAttribute('aria-pressed',x===b&&!!st.con);});run();};});
+  run();
+}
+
+// ---- landing ----
+function landing(){
+  var app = document.getElementById('app');
+  var count = {};
+  Object.keys(SEC).forEach(function(k){count[k]=0;});
+  GP.products.forEach(function(p){(p.sections||[]).forEach(function(s){if(count[s]!=null)count[s]++;});});
+  var multi = GP.products.filter(function(p){return p.offers.length>1;});
+  var drops = multi.filter(function(p){return p._disc>0&&p._any;}).sort(function(a,b){return b._disc-a._disc;}).slice(0,8);
+  var best = GP.products.filter(function(p){return p.best;});
+  best = (best.length?best:multi).slice(0,8);
+
+  var tiles = Object.keys(SEC).map(function(k){
+    return '<a class="tile" href="'+k+'.html"><div class="tic">'+icon(k)+'</div>'+
+      '<div class="t">'+esc(SEC[k])+'</div><div class="c">'+count[k]+' produkte</div></a>';}).join('');
+  var conTiles = Object.keys(CON).map(function(k){
+    return '<a class="tile" href="problema-'+k+'.html"><div class="tic">'+icon(k)+'</div>'+
+      '<div class="t">'+esc(CON[k])+'</div></a>';}).join('');
+
+  app.innerHTML =
+    '<section class="hero"><a class="hero-logo" href="index.html">'+
+    '<img class="hero-logo-img" src="assets/logo.png" alt="glassprice"></a>'+
+    '<h1>Çmime <em>transparente</em><br>për lëkurë si xhami.</h1>'+
+    '<p>Krahaso çmimin dhe gjendjen e çdo produkti K-beauty në '+Object.keys(S).length+
+    ' dyqanet shqiptare — në një faqe të vetme.</p>'+
+    '<form class="search" onsubmit="location.href=\'kerko.html?q=\'+encodeURIComponent(this.q.value);return false;">'+
+    '<input name="q" type="search" placeholder="Kërko produkt ose markë (p.sh. cosrx snail)"></form></section>'+
+    '<div class="sec"><h2>Blej sipas kategorisë</h2></div><div class="tiles">'+tiles+'</div>'+
+    '<div class="sec"><h2>Zbritjet më të mëdha</h2><a class="more" href="oferta.html">Të gjitha ofertat →</a></div>'+
+    '<div class="grid">'+drops.map(card).join('')+'</div>'+
+    '<div class="sec"><h2>Bestsellers</h2><a class="more" href="bestsellers.html">Shiko të gjitha →</a></div>'+
+    '<div class="grid">'+best.map(card).join('')+'</div>'+
+    '<div class="sec"><h2>Blej sipas problemit</h2></div><div class="tiles">'+conTiles+'</div>';
+}
+
+// ---- product detail ----
+function product(){
+  var app = document.getElementById('app');
+  var p = GP.products[parseInt(qp('p'),10)];
+  if(!p){app.innerHTML='<p class="empty">Produkti nuk u gjet. <a href="index.html">Kthehu në ballinë</a></p>';return;}
+  var offers = p.offers.map(function(o){
+    return offerHTML(o, o.in_stock&&o.price===p._min&&p.offers.length>1);}).join('');
+  var chips = (p.sections||[]).map(function(k){return '<a class="chip" href="'+k+'.html">'+icon(k)+esc(SEC[k]||k)+'</a>';})
+    .concat(p.type?['<a class="chip" href="kerko.html?q='+encodeURIComponent(TYP[p.type]||p.type)+'">'+icon(p.type)+esc(TYP[p.type])+'</a>']:[])
+    .concat((p.concerns||[]).map(function(k){return '<a class="chip" href="problema-'+k+'.html">'+icon(k)+esc(CON[k]||k)+'</a>';})).join(' ');
+  var save = p._save>0?'<span class="save">Kurse deri në '+fmt(p._save)+' duke blerë te më i liri</span>':'';
+  document.title = p.name+' · Glass Price';
+  app.innerHTML =
+    '<a class="back" href="javascript:history.length>1?history.back():location.href=\'index.html\'">← Kthehu</a>'+
+    '<div class="detail"><div>'+(p.image?'<img class="hero-img" src="'+esc(p.image)+'" alt="">':'')+'</div>'+
+    '<div><div class="brand">'+esc(p.brand)+'</div><h1>'+esc(p.name)+'</h1>'+
+    (p.volume?'<div class="vol">'+esc(volfmt(p.volume))+'</div>':'')+
+    '<div class="offers">'+offers+'</div>'+save+
+    (chips?'<div class="facets" style="margin-top:18px">'+chips+'</div>':'')+
+    '<p class="lead" style="margin-top:18px">Çmimet u kontrolluan së fundmi në kohën te fund i faqes. '+
+    'Kliko dyqanin për të konfirmuar çmimin para blerjes.<br>'+
+    '<a href="mailto:hello@getglassprice.com?subject='+encodeURIComponent('Çmim i gabuar: '+p.name)+
+    '">Raporto një çmim të gabuar</a></p></div></div>';
+}
+
+// ---- brand index / one brand ----
+function brands(){
+  var b = qp('b');
+  if(b){
+    collection({heading:'Marka: '+b.replace(/-/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();}),
+      filter:function(p){return slug(p.brand)===b;}});
+    return;
+  }
+  var app = document.getElementById('app');
+  var cnt = {};
+  GP.products.forEach(function(p){cnt[p.brand]=(cnt[p.brand]||0)+1;});
+  var names = Object.keys(cnt).sort(function(a,b){return a.toLowerCase()<b.toLowerCase()?-1:1;});
+  app.innerHTML = '<div class="sec"><h2>Markat</h2><span class="count">'+names.length+' marka</span></div>'+
+    '<div class="tiles">'+names.map(function(n){
+      return '<a class="tile" href="marka.html?b='+slug(n)+'"><div class="t">'+esc(n)+'</div>'+
+        '<div class="c">'+cnt[n]+' produkte</div></a>';}).join('')+'</div>';
+}
+
+// ---- search ----
+function search(){
+  collection({heading:'Kërko', filter:function(){return true;}, concerns:true, types:true});
+  var q = qp('q');
+  if(q){var i=document.getElementById('q');i.value=q;i.dispatchEvent(new Event('input'));}
+}
+
+// ---- nav + footer on every page ----
+document.getElementById('nav').className='nav';
+document.getElementById('nav').innerHTML =
+  '<div class="nav-in"><a class="logo" href="index.html">'+
+  '<img class="logo-icon" src="assets/logo-icon.png" alt="">'+wordmark()+'</a>'+
+  '<nav class="nav-links"><a href="fytyra.html">Fytyra</a><a href="floket.html">Flokët</a>'+
+  '<a href="trupi.html">Trupi</a><a href="makeup.html">Make Up</a>'+
+  '<a href="oferta.html">Oferta</a><a href="bestsellers.html">Bestsellers</a><a href="marka.html">Markat</a></nav>'+
+  '<form class="nav-search" onsubmit="location.href=\'kerko.html?q=\'+encodeURIComponent(this.q.value);return false;">'+
+  '<input name="q" type="search" placeholder="Kërko…"></form></div>';
+
+var when = new Date(GP.updated);
+document.getElementById('foot').innerHTML =
+  '<div class="foot-in"><div class="tag-line">Çmime transparente për lëkurë si xhami.</div>'+
+  'Çmimet merren automatikisht nga faqet e dyqaneve dhe mund të ndryshojnë. '+
+  'Kontrolloni çmimin në dyqan para blerjes.<br>'+
+  'Përditësuar: '+when.toLocaleString('sq-AL',{dateStyle:'medium',timeStyle:'short'})+
+  ' · Pa reklama të fshehura, pa renditje sponsor të pashënuara.</div>';
+
+window.gp = {collection:collection, landing:landing, product:product, brands:brands, search:search};
+})();
+"""
+
+FONT_LINK = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
+             '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+             '<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&display=swap" rel="stylesheet">')
+
+PAGE = """<!doctype html>
+<html lang="sq">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>@TITLE@</title>
+<meta name="description" content="@DESC@">
+@FONT@
+<link rel="icon" href="assets/favicon.png">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+<header id="nav"></header>
+<main id="app" class="wrap"></main>
+<footer id="foot"></footer>
+<script src="data.js"></script>
+<script src="assets/app.js"></script>
+<script>@INIT@</script>
+</body>
+</html>
+"""
+
+
+def _page(title, desc, init):
+    return (PAGE.replace("@TITLE@", title).replace("@DESC@", desc)
+            .replace("@FONT@", FONT_LINK).replace("@INIT@", init))
+
+
+def build_site(products, stores, updated, out_dir):
+    out = Path(out_dir)
+    (out / "assets").mkdir(parents=True, exist_ok=True)
+
+    payload = {
+        "updated": updated,
+        "stores": {s["id"]: s["name"] for s in stores},
+        "labels": {"sections": SECTIONS, "areas": AREAS, "concerns": CONCERNS, "types": TYPES},
+        "products": products,
+    }
+    data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    (out / "data.js").write_text("window.GP=" + data + ";", encoding="utf-8")
+    (out / "assets" / "app.css").write_text(CSS, encoding="utf-8")
+    (out / "assets" / "app.js").write_text(JS, encoding="utf-8")
+    for asset in ("logo.png", "logo-icon.png", "favicon.png"):
+        src = BRAND_DIR / asset
+        if src.exists():
+            shutil.copyfile(src, out / "assets" / asset)
+
+    pages = {
+        "index.html": ("Glass Price — Krahaso çmimet K-beauty në Shqipëri",
+                       "Krahaso çmimin dhe gjendjen e çdo produkti K-beauty në dyqanet shqiptare.", "gp.landing();"),
+        "bestsellers.html": ("Bestsellers · Glass Price", "Produktet K-beauty më të shitura.",
+                             "gp.collection({heading:'Bestsellers',lead:'Produktet më të kërkuara.',filter:function(p){return p.best;},concerns:true,types:true});"),
+        "oferta.html": ("Oferta · Glass Price", "Produktet K-beauty me zbritje.",
+                        "gp.collection({heading:'Oferta',lead:'Produktet me zbritje, renditur nga zbritja më e madhe.',filter:function(p){return p.offers.some(function(o){return o.compare_at;});},sort:'disc',concerns:true,types:true});"),
+        "marka.html": ("Markat · Glass Price", "Të gjitha markat K-beauty.", "gp.brands();"),
+        "produkt.html": ("Produkt · Glass Price", "Krahaso çmimet për këtë produkt.", "gp.product();"),
+        "kerko.html": ("Kërko · Glass Price", "Kërko produkte K-beauty.", "gp.search();"),
+    }
+    for key, label in SECTIONS.items():
+        area = "true" if key == "fytyra" else "false"
+        pages[f"{key}.html"] = (f"{label} · Glass Price", f"Produkte K-beauty: {label}.",
+                                "gp.collection({heading:%r,icon:%r,area:%s,filter:function(p){return (p.sections||[]).indexOf(%r)>=0;},types:true,concerns:true});" % (label, key, area, key))
+    for key, label in CONCERNS.items():
+        pages[f"problema-{key}.html"] = (f"{label} · Glass Price", f"Produkte K-beauty për: {label}.",
+                                         "gp.collection({heading:%r,icon:%r,lead:'Produkte që synojnë: %s.',filter:function(p){return (p.concerns||[]).indexOf(%r)>=0;},types:true});" % (label, key, label, key))
+
+    for name, (title, desc, init) in pages.items():
+        (out / name).write_text(_page(title, desc, init), encoding="utf-8")
+
+    return len(pages)
