@@ -1,0 +1,481 @@
+#!/usr/bin/env python3
+"""
+K-beauty price comparison for Albanian stores.
+
+    python kbeauty.py                 fetch all stores, match, build site/index.html
+    python kbeauty.py --offline       rebuild from data/raw/*.json (no network)
+    python kbeauty.py --stores kfarma,beautene
+
+Outputs:
+    data/raw/<store>.json   raw API responses (so you can rebuild offline)
+    data/products.json      normalized + matched products
+    data/matches.csv        every match with its score, for manual review
+    site/index.html         the comparison website (static, one file)
+"""
+import argparse
+import csv
+import html
+import json
+import re
+import sys
+import time
+import unicodedata
+from collections import Counter, defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+
+# ---------------------------------------------------------------- config
+
+STORES = [
+    {"id": "kfarma", "name": "KFarma", "platform": "shopify",
+     "base": "https://kfarma.al", "vendor_is_brand": True},
+    {"id": "beautene", "name": "Beautene", "platform": "woocommerce",
+     "base": "https://beautene.al"},
+    {"id": "koral", "name": "Koral Secrets", "platform": "shopify",
+     "base": "https://koralsecrets.al", "vendor_is_brand": False},
+    {"id": "glowyskin", "name": "Glowy Skin", "platform": "shopify",
+     "base": "https://glowyskinshop.com", "vendor_is_brand": False},
+]
+# Which store's title to show for a matched product (cleanest naming first).
+TITLE_PRIORITY = ["kfarma", "beautene", "koral", "glowyskin"]
+
+# Brands to detect in titles for stores that don't store the brand separately.
+# KFarma vendors and Beautene brands are added automatically on every run.
+EXTRA_BRANDS = [
+    "Dr. Sante", "Centellian24", "Sungboon Editor", "Aromatica", "Beauty of Joseon",
+    "COSRX", "Anua", "Round Lab", "Torriden", "Medicube", "SKIN1004", "Some By Mi",
+    "Isntree", "Mixsoon", "Numbuzin", "Ma:nyo", "Purito", "Axis-Y", "Haruharu Wonder",
+    "Klairs", "I'm From", "Abib", "Jumiso", "Iunik", "By Wishtrend", "Missha",
+    "Innisfree", "Laneige", "Etude", "Holika Holika", "Heimish", "Benton",
+    "Pyunkang Yul", "Dr. Jart+", "Banila Co", "Biodance", "Celimax", "Goodal",
+    "d'Alba", "Medi-Peel", "Tirtir", "VT", "Aestura", "Illiyoon", "Ongredients",
+    "Iroha", "Mediheal", "Dr. Ceuracle", "Tocobo", "Skinfood", "Neogen", "Elizavecca",
+]
+
+MATCH_THRESHOLD = 85      # 0-100, higher = stricter
+REQUEST_DELAY = 1.0       # seconds between requests, be polite
+USER_AGENT = "kbeauty-price-compare/0.1 (personal project)"
+OVERRIDES_FILE = Path("data/overrides.json")
+
+# ---------------------------------------------------------------- similarity
+
+try:
+    from rapidfuzz import fuzz
+
+    def similarity(a, b):
+        # token_set alone scores "x" vs "x foam" as 100; averaging with
+        # token_sort penalizes extra words that usually mean a different product.
+        return (fuzz.token_set_ratio(a, b) + fuzz.token_sort_ratio(a, b)) / 2
+except ImportError:  # pure-python fallback, slower but same idea
+    from difflib import SequenceMatcher
+
+    def _r(x, y):
+        return SequenceMatcher(None, x, y).ratio() * 100
+
+    def similarity(a, b):
+        ta, tb = set(a.split()), set(b.split())
+        inter = " ".join(sorted(ta & tb))
+        sa = (inter + " " + " ".join(sorted(ta - tb))).strip()
+        sb = (inter + " " + " ".join(sorted(tb - ta))).strip()
+        tset = max(_r(inter, sa), _r(inter, sb), _r(sa, sb)) if inter else _r(sa, sb)
+        tsort = _r(" ".join(sorted(a.split())), " ".join(sorted(b.split())))
+        return (tset + tsort) / 2
+
+# ---------------------------------------------------------------- text helpers
+
+STOPWORDS = {"the", "and", "with", "of", "dhe", "me", "per", "for"}
+# If two names differ in one of these (or in any token containing a digit),
+# they are different products/versions no matter how similar the rest is.
+VERSION_WORDS = {"ex", "pro", "plus", "mini", "max", "lite", "light", "rich",
+                 "ii", "iii", "iv", "edition", "set", "kit", "duo", "refill",
+                 "travel", "jumbo", "sample", "spf"}
+
+
+def version_conflict(a, b):
+    diff = set(a.split()) ^ set(b.split())
+    return any(t in VERSION_WORDS or any(c.isdigit() for c in t) for t in diff)
+VOL_RE = re.compile(
+    r"(?<![a-z0-9.])(\d+(?:[.,]\d+)?)\s*"
+    r"(ml|gr|grams?|g|cope|copa|pcs|pc|pairs?|sheets?)(?![a-z])"
+)
+UNIT = {"ml": "ml", "g": "g", "gr": "g", "gram": "g", "grams": "g",
+        "cope": "pcs", "copa": "pcs", "pcs": "pcs", "pc": "pcs",
+        "sheet": "pcs", "sheets": "pcs", "pair": "pairs", "pairs": "pairs"}
+
+
+def fold(s):
+    """unescape html, strip accents (ë -> e), lowercase"""
+    s = html.unescape(s or "")
+    s = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in s if not unicodedata.combining(c)).lower()
+
+
+def clean(s):
+    return re.sub(r"\s+", " ", html.unescape(s or "")).strip()
+
+
+def strip_tags(s):
+    return re.sub(r"<[^>]+>", " ", s or "")
+
+
+def brand_key(s):
+    return re.sub(r"[^a-z0-9]", "", fold(s))
+
+
+def parse_volume(text, default_unit=None):
+    """'... 200ML' -> '200ml'; bare '200' with default_unit='ml' -> '200ml'"""
+    if not text:
+        return None
+    f = fold(text)
+    m = VOL_RE.search(f)
+    if m:
+        num, unit = m.group(1).replace(",", "."), UNIT[m.group(2)]
+    elif default_unit and re.fullmatch(r"\s*\d+(?:[.,]\d+)?\s*", f):
+        num, unit = f.strip().replace(",", "."), default_unit
+    else:
+        return None
+    if "." in num:
+        num = num.rstrip("0").rstrip(".")
+    return f"{num}{unit}"
+
+
+def tokenize(s):
+    s = fold(s).replace("&", " and ")
+    s = VOL_RE.sub(" ", s)                         # volume is matched separately
+    s = re.sub(r"[^a-z0-9.]+", " ", s)
+    s = re.sub(r"(?<!\d)\.|\.(?!\d)", " ", s)      # keep 0.1, drop other dots
+    return [t for t in s.split() if t not in STOPWORDS]
+
+
+def drop_brand_prefix(toks, bkey):
+    for k in range(1, min(5, len(toks)) + 1):
+        if "".join(toks[:k]) == bkey:
+            return toks[k:]
+    return toks
+
+
+def detect_brand(toks, known):
+    """longest known brand at the start of the title; else first word (guessed)"""
+    for k in range(min(4, len(toks)), 0, -1):
+        key = "".join(toks[:k])
+        if key in known:
+            return key, False
+    return (toks[0], True) if toks else ("", True)
+
+
+def to_number(x):
+    if x in (None, ""):
+        return None
+    v = float(x)
+    return int(v) if v.is_integer() else round(v, 2)
+
+# ---------------------------------------------------------------- fetching
+
+
+def get_json(url):
+    req = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+    with urlopen(req, timeout=30) as r:
+        return json.load(r)
+
+
+def fetch_shopify(base):
+    out, page = [], 1
+    while page <= 200:
+        prods = get_json(f"{base}/products.json?limit=250&page={page}").get("products", [])
+        if not prods:
+            break
+        out += prods
+        page += 1
+        time.sleep(REQUEST_DELAY)
+    return out
+
+
+def fetch_woocommerce(base):
+    out, page = [], 1
+    while page <= 200:
+        try:
+            data = get_json(f"{base}/wp-json/wc/store/v1/products?per_page=100&page={page}")
+        except HTTPError as e:
+            if e.code == 400:      # WooCommerce answers 400 past the last page
+                break
+            raise
+        if not data:
+            break
+        out += data
+        page += 1
+        time.sleep(REQUEST_DELAY)
+    return out
+
+# ---------------------------------------------------------------- parsing into one shape
+# every item: store, title, brand, volume, price, compare_at, in_stock, url, image
+
+
+def parse_shopify(store, prods):
+    items = []
+    for p in prods:
+        title = clean(p.get("title"))
+        brand = clean(p.get("vendor")) if store.get("vendor_is_brand") else None
+        opts = [o.get("name", "").lower() for o in p.get("options", [])]
+        variants = p.get("variants", [])
+        multi = len(variants) > 1
+        body_vol = None if multi else parse_volume(strip_tags(p.get("body_html")))
+        images = p.get("images") or []
+        for v in variants:
+            vol = None
+            for i, oname in enumerate(opts[:3]):
+                val = v.get(f"option{i + 1}")
+                if val and val != "Default Title":
+                    unit = UNIT.get(oname.strip()) if oname.strip() in UNIT else None
+                    vol = vol or parse_volume(val, default_unit=unit)
+            vol = vol or parse_volume(title) or body_vol
+            url = f"{store['base']}/products/{p['handle']}"
+            if multi:
+                url += f"?variant={v['id']}"
+            img = (v.get("featured_image") or {}).get("src") or (images[0]["src"] if images else None)
+            price = to_number(v.get("price"))
+            cmp_at = to_number(v.get("compare_at_price"))
+            items.append({
+                "store": store["id"], "title": title, "brand": brand, "volume": vol,
+                "price": price,
+                "compare_at": cmp_at if cmp_at and price and cmp_at > price else None,
+                "in_stock": bool(v.get("available")), "url": url, "image": img,
+            })
+    return items
+
+
+def parse_woocommerce(store, prods):
+    items = []
+    for p in prods:
+        title = clean(p.get("name"))
+        brands = p.get("brands") or []
+        pr = p.get("prices") or {}
+        minor = int(pr.get("currency_minor_unit") or 0)
+        price = to_number(int(pr["price"]) / 10 ** minor) if pr.get("price") else None
+        reg = to_number(int(pr["regular_price"]) / 10 ** minor) if pr.get("regular_price") else None
+        vol = (parse_volume(title)
+               or parse_volume(strip_tags(p.get("price_html")))
+               or parse_volume(strip_tags(p.get("short_description"))))
+        imgs = p.get("images") or []
+        items.append({
+            "store": store["id"], "title": title,
+            "brand": clean(brands[0]["name"]) if brands else None, "volume": vol,
+            "price": price, "compare_at": reg if reg and price and reg > price else None,
+            "in_stock": bool(p.get("is_in_stock")), "url": p.get("permalink"),
+            "image": imgs[0].get("thumbnail") or imgs[0].get("src") if imgs else None,
+        })
+    return items
+
+
+PARSERS = {"shopify": parse_shopify, "woocommerce": parse_woocommerce}
+FETCHERS = {"shopify": fetch_shopify, "woocommerce": fetch_woocommerce}
+
+# ---------------------------------------------------------------- normalize + match
+
+
+def normalize(items):
+    """adds brand_key, brand_guessed, name_key; returns brand display names"""
+    known, spellings = {}, defaultdict(Counter)
+    for b in EXTRA_BRANDS:
+        known[brand_key(b)] = b
+    for it in items:
+        if it["brand"]:
+            known[brand_key(it["brand"])] = it["brand"]
+    for it in items:
+        toks = tokenize(it["title"])
+        if it["brand"]:
+            bkey, guessed = brand_key(it["brand"]), False
+        else:
+            bkey, guessed = detect_brand(toks, known)
+        it["brand_key"], it["brand_guessed"] = bkey, guessed
+        it["name_key"] = " ".join(drop_brand_prefix(toks, bkey))
+        if it["brand"]:
+            spellings[bkey][it["brand"]] += 1
+    display = {k: (spellings[k].most_common(1)[0][0] if spellings[k] else v) for k, v in known.items()}
+    return display
+
+
+def load_overrides():
+    if OVERRIDES_FILE.exists():
+        return json.loads(OVERRIDES_FILE.read_text(encoding="utf-8"))
+    return {"force": [], "block": []}
+
+
+def match(items, overrides=None):
+    """greedy clustering: best-scoring cross-store pairs first, max one item per store per cluster"""
+    overrides = overrides or {"force": [], "block": []}
+    block = {frozenset(p) for p in overrides.get("block", [])}
+    parent = list(range(len(items)))
+    stores = [{it["store"]} for it in items]
+    by_url = {it["url"]: i for i, it in enumerate(items)}
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def union(i, j):
+        ri, rj = find(i), find(j)
+        if ri == rj or stores[ri] & stores[rj]:
+            return False
+        parent[rj] = ri
+        stores[ri] |= stores[rj]
+        return True
+
+    for group in overrides.get("force", []):
+        idx = [by_url[u] for u in group if u in by_url]
+        for j in idx[1:]:
+            union(idx[0], j)
+
+    edges = []
+    by_brand = defaultdict(list)
+    for i, it in enumerate(items):
+        by_brand[it["brand_key"]].append(i)
+    for idx in by_brand.values():
+        for a in range(len(idx)):
+            for b in range(a + 1, len(idx)):
+                i, j = idx[a], idx[b]
+                A, B = items[i], items[j]
+                if A["store"] == B["store"]:
+                    continue
+                if A["volume"] and B["volume"] and A["volume"] != B["volume"]:
+                    continue
+                if frozenset((A["url"], B["url"])) in block:
+                    continue
+                if version_conflict(A["name_key"], B["name_key"]):
+                    continue
+                s = similarity(A["name_key"], B["name_key"])
+                if s >= MATCH_THRESHOLD:
+                    edges.append((s, i, j))
+    edges.sort(reverse=True)
+    scores = {}
+    for s, i, j in edges:
+        if union(i, j):
+            scores[i] = max(scores.get(i, 0), s)
+            scores[j] = max(scores.get(j, 0), s)
+
+    clusters = defaultdict(list)
+    for i in range(len(items)):
+        clusters[find(i)].append(i)
+    return list(clusters.values()), scores
+
+
+def pretty(title):
+    letters = [c for c in title if c.isalpha()]
+    if letters and sum(c.isupper() for c in letters) / len(letters) > 0.8:
+        title = title.title()
+        title = re.sub(r"(\d)(Ml|Gr|G)\b", lambda m: m.group(1) + m.group(2).lower(), title)
+    return title
+
+
+def build_products(items, clusters, brand_display):
+    products = []
+    for c in clusters:
+        members = sorted((items[i] for i in c), key=lambda it: TITLE_PRIORITY.index(it["store"])
+                         if it["store"] in TITLE_PRIORITY else 99)
+        lead = members[0]
+        offers = sorted(
+            ({k: it[k] for k in ("store", "price", "compare_at", "in_stock", "url")} for it in members),
+            key=lambda o: (not o["in_stock"], o["price"] if o["price"] is not None else 1e12))
+        bkey = lead["brand_key"]
+        products.append({
+            "name": pretty(lead["title"]),
+            "brand": brand_display.get(bkey) or (lead["brand"] or bkey).title(),
+            "volume": next((m["volume"] for m in members if m["volume"]), None),
+            "image": next((m["image"] for m in members if m["image"]), None),
+            "offers": offers,
+        })
+    products.sort(key=lambda p: (-len(p["offers"]), p["brand"].lower(), p["name"].lower()))
+    return products
+
+
+def write_match_report(items, clusters, scores, path):
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["cluster", "store", "brand_key", "volume", "price", "in_stock", "score", "title", "url"])
+        n = 0
+        for c in sorted(clusters, key=len, reverse=True):
+            if len(c) < 2:
+                continue
+            n += 1
+            for i in c:
+                it = items[i]
+                w.writerow([n, it["store"], it["brand_key"], it["volume"], it["price"],
+                            it["in_stock"], round(scores.get(i, 0), 1), it["title"], it["url"]])
+
+# ---------------------------------------------------------------- site
+
+
+def build_site(products, stores, updated, out_path):
+    payload = {"updated": updated, "stores": {s["id"]: s["name"] for s in stores},
+               "products": products}
+    data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    tpl = (Path(__file__).parent / "template.html").read_text(encoding="utf-8")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(tpl.replace("__DATA__", data), encoding="utf-8")
+
+# ---------------------------------------------------------------- main
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--offline", action="store_true", help="use saved data/raw/*.json, no network")
+    ap.add_argument("--stores", help="comma-separated store ids, default all")
+    ap.add_argument("--out", default="site/index.html")
+    args = ap.parse_args()
+
+    stores = STORES
+    if args.stores:
+        wanted = set(args.stores.split(","))
+        stores = [s for s in STORES if s["id"] in wanted]
+    raw_dir = Path("data/raw")
+    raw_dir.mkdir(parents=True, exist_ok=True)
+
+    items = []
+    for s in stores:
+        raw_file = raw_dir / f"{s['id']}.json"
+        if args.offline:
+            if not raw_file.exists():
+                print(f"  {s['name']}: no saved data, skipping", file=sys.stderr)
+                continue
+            raw = json.loads(raw_file.read_text(encoding="utf-8"))
+        else:
+            print(f"Fetching {s['name']} ...", flush=True)
+            try:
+                raw = FETCHERS[s["platform"]](s["base"])
+            except Exception as e:  # one broken store must not kill the whole run
+                print(f"  FAILED: {e}", file=sys.stderr)
+                if not raw_file.exists():
+                    continue
+                print("  using last saved data instead", file=sys.stderr)
+                raw = json.loads(raw_file.read_text(encoding="utf-8"))
+            else:
+                raw_file.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+        parsed = PARSERS[s["platform"]](s, raw)
+        print(f"  {s['name']}: {len(parsed)} items")
+        items += parsed
+
+    if not items:
+        sys.exit("No products loaded.")
+
+    brand_display = normalize(items)
+    clusters, scores = match(items, load_overrides())
+    products = build_products(items, clusters, brand_display)
+
+    Path("data").mkdir(exist_ok=True)
+    Path("data/products.json").write_text(json.dumps(products, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_match_report(items, clusters, scores, "data/matches.csv")
+    updated = datetime.now(timezone.utc).isoformat(timespec="minutes")
+    build_site(products, stores, updated, Path(args.out))
+
+    multi = sum(1 for p in products if len(p["offers"]) > 1)
+    guessed = sum(1 for it in items if it["brand_guessed"])
+    print(f"\n{len(items)} items -> {len(products)} products, {multi} found in 2+ stores")
+    print(f"{guessed} items had no known brand (first word used); add them to EXTRA_BRANDS")
+    print(f"Review matches in data/matches.csv, site at {args.out}")
+
+
+if __name__ == "__main__":
+    main()
