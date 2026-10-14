@@ -55,9 +55,8 @@ CSS = r""":root{
   --accent:#c25570;        /* same-hue pink, used only for link/label text */
   --accent-soft:#fdebee;   /* cheapest row + active chips */
   --brand-mint:#83c4aa; --brand-pink:#ec97a6;    /* logo wordmark: glass / price */
-  --lilac:#fbe2e8; --lilac-ink:#b23b5a;          /* bestseller badge (pink) */
-  --sage:#dcefe5; --sage-ink:#276b4d;            /* in-stock badge (mint) */
-  --peach:#fbe7db; --peach-ink:#a8451b;          /* sale badge */
+  --pinkbadge:#fbe2e8; --pinkbadge-ink:#b23b5a;  /* sale / bestseller badge (pink) */
+  --sage:#d3ecdd; --sage-ink:#276b4d;            /* in-stock badge (mint) */
   --no:#a79da2;
   --shadow:0 1px 2px rgba(59,46,53,.04), 0 6px 20px rgba(158,74,110,.06);
 }
@@ -108,6 +107,11 @@ a:hover{text-decoration:underline}
   background-color:var(--accent-soft);box-shadow:0 4px 16px rgba(196,85,112,.12);
   outline:2px solid #fff;outline-offset:-2px;border:2px solid var(--line);transition:.14s}
 .cat:hover .cat-img{border-color:var(--pink);transform:translateY(-3px)}
+.cat .cat-ic{width:86px;height:86px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  background:var(--sage);color:var(--sage-ink);border:2px solid var(--line);
+  box-shadow:0 4px 16px rgba(111,189,162,.18);transition:.14s}
+.cat:hover .cat-ic{border-color:var(--mint);transform:translateY(-3px)}
+.cat .cat-ic svg{width:38px;height:38px}
 .cat .cat-t{font-size:13px;font-weight:600;line-height:1.2}
 
 /* section headers */
@@ -169,8 +173,8 @@ select.chip{appearance:none}
 .badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .badge{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px}
 .badge.stock{background:var(--sage);color:var(--sage-ink)}
-.badge.sale{background:var(--peach);color:var(--peach-ink)}
-.badge.best{background:var(--lilac);color:var(--lilac-ink)}
+.badge.sale{background:var(--pinkbadge);color:var(--pinkbadge-ink)}
+.badge.best{background:var(--pinkbadge);color:var(--pinkbadge-ink)}
 .offers{display:flex;flex-direction:column;gap:4px}
 .offer{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:11px;color:inherit;
   border:1px solid transparent}
@@ -183,7 +187,7 @@ select.chip{appearance:none}
 .tag{font-size:11px;font-weight:700;color:var(--accent);margin-left:5px}
 .price{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
 .was{color:var(--muted);text-decoration:line-through;font-size:12px;margin-right:5px;font-weight:400}
-.price.sale{color:var(--peach-ink)}
+.price.sale{color:var(--accent)}
 .more-btn{grid-column:1/-1;justify-self:center;margin-top:8px}
 .empty{grid-column:1/-1;text-align:center;color:var(--muted);padding:48px 0}
 
@@ -413,8 +417,10 @@ function landing(){
   var catCircles = Object.keys(SEC).map(function(k){
     return circle(k+'.html', SEC[k], photo(function(x){return (x.sections||[]).indexOf(k)>=0;}));
   }).join('');
+  // concerns are shown as illustrated icon circles (a concern, not a product)
   var conCircles = Object.keys(CON).map(function(k){
-    return circle('problema-'+k+'.html', CON[k], photo(function(x){return (x.concerns||[]).indexOf(k)>=0;}));
+    return '<a class="cat" href="problema-'+k+'.html"><span class="cat-ic">'+icon(k)+'</span>'+
+      '<span class="cat-t">'+esc(CON[k])+'</span></a>';
   }).join('');
 
   app.innerHTML =
