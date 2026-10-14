@@ -80,16 +80,16 @@ a:hover{text-decoration:underline}
 .hero-logo{display:block;margin-bottom:6px}
 .hero-logo:hover{text-decoration:none}
 .hero-logo-img{width:240px;max-width:72vw;height:auto;display:block;margin:0 auto}
-.nav-links{display:flex;gap:2px;flex-wrap:wrap;align-items:center;margin-left:auto}
-.nav-links a{color:var(--ink);font-size:14px;padding:6px 11px;border-radius:999px}
-.nav-links a:hover{background:var(--accent-soft);color:var(--accent);text-decoration:none}
-/* prominent search bar on top */
-.nav-srch{background:var(--card);padding:2px 16px 12px}
-.nav-srch form{position:relative;max-width:660px;margin:auto}
-.nav-srch .mag{position:absolute;left:16px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--muted);pointer-events:none}
-.nav-srch input{width:100%;padding:12px 16px 12px 44px;font-size:15px;border:1px solid var(--line);
+.nav-links{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+.nav-links a{color:var(--ink);font-size:14.5px;text-decoration:underline;text-underline-offset:5px;
+  text-decoration-thickness:1px;text-decoration-color:var(--line)}
+.nav-links a:hover{color:var(--accent);text-decoration-color:var(--accent)}
+/* search on the right of the header */
+.nav-search{margin-left:auto;position:relative;flex:0 1 270px;min-width:170px}
+.nav-search .mag{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--muted);pointer-events:none}
+.nav-search input{width:100%;padding:9px 14px 9px 36px;font-size:14px;border:1px solid var(--line);
   border-radius:999px;background:var(--bg);color:var(--ink);outline:none}
-.nav-srch input:focus{border-color:var(--pink);background:var(--card)}
+.nav-search input:focus{border-color:var(--pink);background:var(--card)}
 
 /* hero */
 .hero{position:relative;text-align:center;padding:48px 22px 42px;margin:6px 0 4px;border-radius:28px;
@@ -519,10 +519,10 @@ document.getElementById('nav').innerHTML =
   '<img class="logo-icon" src="assets/logo-icon.png" alt="">'+wordmark()+'</a>'+
   '<nav class="nav-links"><a href="fytyra.html">Fytyra</a><a href="floket.html">Flokët</a>'+
   '<a href="trupi.html">Trupi</a><a href="makeup.html">Make Up</a>'+
-  '<a href="oferta.html">Oferta</a><a href="bestsellers.html">Bestsellers</a><a href="marka.html">Markat</a></nav></div>'+
-  '<div class="nav-srch"><form onsubmit="location.href=\'kerko.html?q=\'+encodeURIComponent(this.q.value);return false;">'+
+  '<a href="oferta.html">Oferta</a><a href="bestsellers.html">Bestsellers</a><a href="marka.html">Markat</a></nav>'+
+  '<form class="nav-search" onsubmit="location.href=\'kerko.html?q=\'+encodeURIComponent(this.q.value);return false;">'+
   '<svg class="mag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg>'+
-  '<input name="q" type="search" placeholder="Kërko produkt ose markë (p.sh. cosrx snail)"></form></div>';
+  '<input name="q" type="search" placeholder="Kërko…"></form></div>';
 
 var when = new Date(GP.updated);
 document.getElementById('foot').innerHTML =
