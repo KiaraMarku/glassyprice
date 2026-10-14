@@ -441,6 +441,27 @@ CONCERN_KW = {
     "hidratim": ["hidrat", "hydrat", "dehidrat", "dry skin", "thate", "hyaluron", "moistur",
                  "ceramide", "nourish", "panthenol"],
 }
+# Section-specific subcategories for hair / body / make-up, so each section page
+# shows its own filters (a Hair page must not offer "Toner" or "Akne").
+KIND_KW = {
+    # hair
+    "shampo":      ["shampo", "shampoo"],
+    "balsam":      ["balsam", "conditioner", "kondicioner"],
+    "maske_floke": ["hair mask", "maske floke", "maske per floke", "hair pack", "hair treatment",
+                    "trajtim floke", "ampula floke", "scalp"],
+    "vaj_floke":   ["hair oil", "vaj floke", "vaj per floke", "hair serum", "serum floke", "leave in", "leave-in"],
+    "stilues":     ["styling", "stilues", "hair spray", "gel floke", "wax", "pomade", "mousse", "heat protect"],
+    # body
+    "krem_trupi":  ["body cream", "body lotion", "krem trupi", "locion trupi", "body butter", "body milk", "krem/locion trupi"],
+    "dush":        ["shower", "dush", "body wash", "shower gel", "larje trupi", "sapun"],
+    "scrub":       ["scrub", "peeling trupi", "exfoliat"],
+    "duar_kembe":  ["hand cream", "krem duar", "foot", "kembe", "duart", "maske per duart"],
+    # make-up
+    "mu_fytyre":   ["foundation", "concealer", "fondatin", "blush", "powder", "pudra", "bb cream",
+                    "cc cream", "cushion", "bronzer", "highlighter", "primer"],
+    "mu_syte":     ["mascara", "eyeliner", "eyeshadow", "eye shadow", "brow", "vetulla", "laps syri"],
+    "mu_buze":     ["lipstick", "lip tint", "lip gloss", "lip liner", "buzekuq", "laps buze"],
+}
 # Product *form* (not purpose — "anti-age"/"spot" live in CONCERN_KW instead, so
 # they don't mislabel a cleanser or serum). Order matters: first match wins.
 TYPE_KW = [
@@ -475,7 +496,8 @@ def classify(members):
         area = "lekura"
     ptype = next((t for t, kws in TYPE_KW if any(k in text for k in kws)), None)
     concerns = [c for c, kws in CONCERN_KW.items() if any(k in text for k in kws)]
-    return sections, area, ptype, concerns
+    kinds = [k for k, kws in KIND_KW.items() if any(w in text for w in kws)]
+    return sections, area, ptype, concerns, kinds
 
 
 def build_products(items, clusters, brand_display):
@@ -488,14 +510,15 @@ def build_products(items, clusters, brand_display):
             ({k: it[k] for k in ("store", "price", "compare_at", "in_stock", "url")} for it in members),
             key=lambda o: (not o["in_stock"], o["price"] if o["price"] is not None else 1e12))
         bkey = lead["brand_key"]
-        sections, area, ptype, concerns = classify(members)
+        sections, area, ptype, concerns, kinds = classify(members)
         products.append({
             "name": pretty(lead["title"]),
             "brand": brand_display.get(bkey) or (lead["brand"] or bkey).title(),
             "volume": next((m["volume"] for m in members if m["volume"]), None),
             "image": next((m["image"] for m in members if m["image"]), None),
             "offers": offers,
-            "sections": sections, "area": area, "type": ptype, "concerns": concerns,
+            "sections": sections, "area": area, "type": ptype,
+            "concerns": concerns, "kinds": kinds,
             "best": any(m.get("bestseller") for m in members),
         })
     # Popularity proxy (no sales data): a store tagging it "bestseller" is the
