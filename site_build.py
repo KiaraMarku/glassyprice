@@ -294,8 +294,11 @@ function offerHTML(o,best){
     (o.in_stock?'':' · mbaroi')+'</span><span class="price '+(o.compare_at?'sale':'')+'">'+
     was+fmt(o.price)+'</span></a>';
 }
+// hand-picked category photos (brand/photos/<key>.*) override product photos
+var PH = GP.photos || {};
 // first product (most popular, since data is pop-sorted) matching a test, with an image
 function firstPhoto(testFn){var p=GP.products.find(function(x){return x.image&&testFn(x);});return p?p.image:'';}
+function keyPhoto(key, testFn){return PH[key] || firstPhoto(testFn);}
 function badges(p){
   var b='';
   if(p.best) b+='<span class="badge best">Bestseller</span>';
@@ -370,7 +373,7 @@ function collection(cfg){
 
   var head;
   if(cfg.banner){
-    var bimg = firstPhoto(cfg.filter||function(){return true;});
+    var bimg = (cfg.photoKey&&PH[cfg.photoKey]) || firstPhoto(cfg.filter||function(){return true;});
     head = '<div class="pagehead"><div class="ph-txt"><h1>'+esc(cfg.heading)+'</h1>'+
       (cfg.lead?'<p>'+esc(cfg.lead)+'</p>':'')+'</div>'+
       (bimg?'<img class="ph-img" src="'+esc(bimg)+'" alt="">':'')+'</div>';
@@ -439,10 +442,10 @@ function landing(){
       '<span class="cat-t">'+esc(label)+'</span></a>';
   }
   var catCircles = Object.keys(SEC).map(function(k){
-    return circle(k+'.html', SEC[k], firstPhoto(function(x){return (x.sections||[]).indexOf(k)>=0;}));
+    return circle(k+'.html', SEC[k], keyPhoto(k, function(x){return (x.sections||[]).indexOf(k)>=0;}));
   }).join('');
   var conCircles = Object.keys(CON).map(function(k){
-    return circle('problema-'+k+'.html', CON[k], firstPhoto(function(x){return (x.concerns||[]).indexOf(k)>=0;}));
+    return circle('problema-'+k+'.html', CON[k], keyPhoto(k, function(x){return (x.concerns||[]).indexOf(k)>=0;}));
   }).join('');
 
   app.innerHTML =
@@ -572,11 +575,24 @@ def build_site(products, stores, updated, out_dir):
     out = Path(out_dir)
     (out / "assets").mkdir(parents=True, exist_ok=True)
 
+    # Optional hand-picked category/concern photos: drop files named by taxonomy
+    # key (akne.jpg, fytyra.jpg, poret.png, …) into brand/photos/ and they are
+    # used for that category's circle and page banner, overriding product photos.
+    photos = {}
+    photo_dir = BRAND_DIR / "photos"
+    if photo_dir.exists():
+        (out / "assets" / "photos").mkdir(parents=True, exist_ok=True)
+        for f in sorted(photo_dir.iterdir()):
+            if f.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+                shutil.copyfile(f, out / "assets" / "photos" / f.name)
+                photos[f.stem] = "assets/photos/" + f.name
+
     payload = {
         "updated": updated,
         "stores": {s["id"]: s["name"] for s in stores},
         "labels": {"sections": SECTIONS, "areas": AREAS, "concerns": CONCERNS, "types": TYPES,
                    "hairkinds": HAIRKINDS, "bodykinds": BODYKINDS, "makeupkinds": MAKEUPKINDS},
+        "photos": photos,
         "products": products,
     }
     data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
@@ -612,10 +628,10 @@ def build_site(products, stores, updated, out_dir):
     }
     for key, label in SECTIONS.items():
         pages[f"{key}.html"] = (f"{label} · Glass Price", f"Produkte K-beauty: {label}.",
-                                "gp.collection({heading:%r,banner:true,%s,filter:function(p){return (p.sections||[]).indexOf(%r)>=0;}});" % (label, SECTION_FACETS[key], key))
+                                "gp.collection({heading:%r,banner:true,photoKey:%r,%s,filter:function(p){return (p.sections||[]).indexOf(%r)>=0;}});" % (label, key, SECTION_FACETS[key], key))
     for key, label in CONCERNS.items():
         pages[f"problema-{key}.html"] = (f"{label} · Glass Price", f"Produkte K-beauty për: {label}.",
-                                         "gp.collection({heading:%r,banner:true,lead:'Produkte K-beauty për: %s.',filter:function(p){return (p.concerns||[]).indexOf(%r)>=0;},facets:[{id:'typ',label:'Lloji',map:'types',field:'type'}]});" % (label, label, key))
+                                         "gp.collection({heading:%r,banner:true,photoKey:%r,lead:'Produkte K-beauty për: %s.',filter:function(p){return (p.concerns||[]).indexOf(%r)>=0;},facets:[{id:'typ',label:'Lloji',map:'types',field:'type'}]});" % (label, key, label, key))
 
     for name, (title, desc, init) in pages.items():
         (out / name).write_text(_page(title, desc, init), encoding="utf-8")
