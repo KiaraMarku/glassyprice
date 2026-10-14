@@ -23,7 +23,9 @@ import unicodedata
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.error import HTTPError
+import ssl
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 # ---------------------------------------------------------------- config
@@ -174,10 +176,30 @@ def to_number(x):
 # ---------------------------------------------------------------- fetching
 
 
+# Some stores let their TLS certificate expire. The product feeds are public
+# (no login, no secrets), so rather than drop the store we retry without
+# certificate verification and warn loudly, once per host.
+_INSECURE_CTX = ssl.create_default_context()
+_INSECURE_CTX.check_hostname = False
+_INSECURE_CTX.verify_mode = ssl.CERT_NONE
+_warned_hosts = set()
+
+
 def get_json(url):
     req = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-    with urlopen(req, timeout=30) as r:
-        return json.load(r)
+    try:
+        with urlopen(req, timeout=30) as r:
+            return json.load(r)
+    except URLError as e:
+        if not isinstance(e.reason, ssl.SSLCertVerificationError):
+            raise
+        host = urlsplit(url).hostname
+        if host not in _warned_hosts:
+            _warned_hosts.add(host)
+            print(f"  WARNING: {host} has an invalid TLS certificate ({e.reason.verify_message}); "
+                  "fetching its public feed without verification", file=sys.stderr)
+        with urlopen(req, timeout=30, context=_INSECURE_CTX) as r:
+            return json.load(r)
 
 
 def fetch_shopify(base):
