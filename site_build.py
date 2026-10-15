@@ -85,22 +85,34 @@ a:hover{text-decoration:underline}
   text-decoration-thickness:1px;text-decoration-color:var(--line)}
 .nav-links a:hover{color:var(--accent);text-decoration-color:var(--accent)}
 /* search on the right of the header */
-.nav-search{margin-left:auto;position:relative;flex:0 1 270px;min-width:170px}
-.nav-search .mag{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--muted);pointer-events:none}
-.nav-search input{width:100%;padding:9px 14px 9px 36px;font-size:14px;border:1px solid var(--line);
+.nav-search{margin-left:auto;position:relative;flex:0 1 300px;min-width:190px}
+.nav-search input{width:100%;padding:9px 46px 9px 16px;font-size:14px;border:1px solid var(--line);
   border-radius:999px;background:var(--bg);color:var(--ink);outline:none}
 .nav-search input:focus{border-color:var(--pink);background:var(--card)}
+.nav-search .go{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:30px;height:30px;
+  border-radius:50%;border:none;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.nav-search .go svg{width:15px;height:15px}
 
 /* hero */
-.hero{position:relative;text-align:center;padding:48px 22px 42px;margin:6px 0 4px;border-radius:28px;
+.hero{position:relative;text-align:center;padding:50px 22px 46px;margin:6px 0 4px;border-radius:28px;
   background:radial-gradient(125% 135% at 50% 0,#fde3ea 0%,#e8f6ef 52%,#fdf8f9 100%);overflow:hidden}
-.hero h1{font-size:clamp(31px,6vw,49px);margin:4px 0 10px;line-height:1.08}
+.hero > *{position:relative;z-index:2}
+.hero h1{font-size:clamp(31px,6vw,50px);margin:6px 0 12px;line-height:1.08}
 .hero h1 em{font-style:italic;color:var(--accent)}
-.hero p{color:var(--ink);opacity:.72;font-size:17px;margin:0 auto 22px;max-width:560px}
-.hero .search{max-width:480px;margin:auto;position:relative;z-index:2}
-.hero .search input{width:100%;padding:15px 20px;font-size:16px;border:1px solid var(--line);
+.hero p{color:var(--ink);opacity:.72;font-size:17px;margin:0 auto 24px;max-width:560px}
+.hero .search{max-width:540px;margin:auto;display:flex;gap:8px}
+.hero .search input{flex:1;min-width:0;padding:15px 20px;font-size:16px;border:1px solid var(--line);
   border-radius:999px;background:var(--card);color:var(--ink);outline:none;box-shadow:0 4px 18px rgba(196,85,112,.1)}
 .hero .search input:focus{border-color:var(--pink)}
+.hero .search .btn{flex:none;border:none;background:var(--accent);color:#fff;font-weight:700;font-size:15px;
+  padding:0 24px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:8px}
+.hero .search .btn:hover{filter:brightness(1.05)}
+/* decorative skincare illustrations */
+.hero-deco{position:absolute;top:0;bottom:0;width:230px;z-index:1;pointer-events:none;opacity:.95}
+.hero-deco svg{position:absolute}
+.hero-deco-l{left:0}
+.hero-deco-r{right:0}
+@media(max-width:860px){.hero-deco{display:none}}
 
 /* category circles (real product photos, no boxes) */
 .cats{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin:4px 0 6px}
@@ -264,6 +276,31 @@ var IALIAS = {shampo:'pastrues',balsam:'hidratues',maske_floke:'maske',vaj_floke
   krem_trupi:'hidratues',dush:'pastrues',scrub:'poret',duar_kembe:'trupi',
   mu_fytyre:'fytyra',mu_syte:'syte',mu_buze:'buzet'};
 function icon(k){k=IALIAS[k]||k;return ICON[k]?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ICON[k]+'</svg>':'';}
+
+// decorative skincare illustrations for the hero (mint + pink line art)
+var MINT='#86c7b0', PINK='#f4aeb9', MFILL='#e7f4ec', PFILL='#fde3ea';
+function gDropper(st){return '<svg style="'+st+'" width="60" height="140" viewBox="0 0 60 140">'+
+  '<rect x="22" y="6" width="16" height="30" rx="7" fill="'+PINK+'"/>'+
+  '<rect x="24.5" y="34" width="11" height="9" fill="'+MFILL+'" stroke="'+MINT+'" stroke-width="2.5"/>'+
+  '<rect x="13" y="43" width="34" height="90" rx="13" fill="'+MFILL+'" stroke="'+MINT+'" stroke-width="2.5"/>'+
+  '<rect x="20" y="68" width="20" height="46" rx="4" fill="#fff" stroke="'+PINK+'" stroke-width="2"/></svg>';}
+function gTube(st){return '<svg style="'+st+'" width="56" height="140" viewBox="0 0 56 140">'+
+  '<rect x="20" y="6" width="16" height="16" rx="3" fill="'+MINT+'"/>'+
+  '<rect x="14" y="22" width="28" height="110" rx="13" fill="'+PFILL+'" stroke="'+PINK+'" stroke-width="2.5"/>'+
+  '<circle cx="28" cy="86" r="8.5" fill="none" stroke="'+PINK+'" stroke-width="2.5"/>'+
+  '<g stroke="'+PINK+'" stroke-width="2.5" stroke-linecap="round">'+
+  '<path d="M28 70v4M28 98v4M10 86h4M42 86h4M16 74l3 3M40 74l-3 3M16 98l3-3M40 98l-3-3"/></g></svg>';}
+function gJar(st){return '<svg style="'+st+'" width="88" height="68" viewBox="0 0 88 68">'+
+  '<rect x="16" y="26" width="56" height="38" rx="11" fill="'+MFILL+'" stroke="'+MINT+'" stroke-width="2.5"/>'+
+  '<rect x="12" y="13" width="64" height="18" rx="9" fill="'+PINK+'"/></svg>';}
+function gLeaf(st){return '<svg style="'+st+'" width="46" height="46" viewBox="0 0 46 46">'+
+  '<path d="M40 6C16 6 6 16 6 40 30 40 40 30 40 6z" fill="#cdeadd" stroke="'+MINT+'" stroke-width="2"/>'+
+  '<path d="M9 37C16 26 26 18 37 11" fill="none" stroke="'+MINT+'" stroke-width="2"/></svg>';}
+var heroDeco =
+  '<div class="hero-deco hero-deco-r">'+gDropper('top:20px;right:122px')+gTube('top:58px;right:30px')+
+    gJar('top:196px;right:84px')+gLeaf('top:170px;right:12px')+'</div>'+
+  '<div class="hero-deco hero-deco-l">'+gJar('top:42px;left:18px')+gTube('top:150px;left:30px')+
+    gLeaf('top:34px;left:150px')+'</div>';
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -449,13 +486,14 @@ function landing(){
   }).join('');
 
   app.innerHTML =
-    '<section class="hero"><a class="hero-logo" href="index.html">'+
-    '<img class="hero-logo-img" src="assets/logo.png" alt="glassprice"></a>'+
-    '<h1>Çmime <em>transparente</em><br>për lëkurë si xhami.</h1>'+
+    '<section class="hero">'+heroDeco+
+    '<a class="hero-logo" href="index.html"><img class="hero-logo-img" src="assets/logo.png" alt="glassprice"></a>'+
+    '<h1>Çmime <em>transparente</em><br>për lëkurë si <em>xhami</em>.</h1>'+
     '<p>Krahaso çmimin dhe gjendjen e çdo produkti K-beauty në '+Object.keys(S).length+
     ' dyqanet shqiptare — në një faqe të vetme.</p>'+
     '<form class="search" onsubmit="location.href=\'kerko.html?q=\'+encodeURIComponent(this.q.value);return false;">'+
-    '<input name="q" type="search" placeholder="Kërko produkt ose markë (p.sh. cosrx snail)"></form></section>'+
+    '<input name="q" type="search" placeholder="Kërko produkt ose markë (p.sh. cosrx snail)">'+
+    '<button class="btn" type="submit"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg>Kërko</button></form></section>'+
     '<div class="sec"><h2>Blej sipas kategorisë</h2></div><div class="cats">'+catCircles+'</div>'+
     '<div class="sec"><h2>Zbritjet më të mëdha</h2><a class="more" href="oferta.html">Të gjitha ofertat →</a></div>'+
     '<div class="grid">'+drops.map(card).join('')+'</div>'+
@@ -524,8 +562,8 @@ document.getElementById('nav').innerHTML =
   '<a href="trupi.html">Trupi</a><a href="makeup.html">Make Up</a>'+
   '<a href="oferta.html">Oferta</a><a href="bestsellers.html">Bestsellers</a><a href="marka.html">Markat</a></nav>'+
   '<form class="nav-search" onsubmit="location.href=\'kerko.html?q=\'+encodeURIComponent(this.q.value);return false;">'+
-  '<svg class="mag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg>'+
-  '<input name="q" type="search" placeholder="Kërko…"></form></div>';
+  '<input name="q" type="search" placeholder="Kërko… (p.sh. Cosrx, Pyunkang Yul)">'+
+  '<button class="go" type="submit" aria-label="Kërko"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg></button></form></div>';
 
 var when = new Date(GP.updated);
 document.getElementById('foot').innerHTML =
