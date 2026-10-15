@@ -111,11 +111,12 @@ a:hover{text-decoration:underline}
 .hero .search .btn{flex:none;border:none;background:var(--accent);color:#fff;font-weight:600;font-size:15px;
   padding:12px 28px;border-radius:999px;cursor:pointer}
 .hero .search .btn:hover{filter:brightness(1.05)}
-/* hero decoration: real product photos over soft blobs (right cluster) */
-.hero-deco{position:absolute;top:50%;right:max(8px,5vw);transform:translateY(-50%);width:300px;height:390px;z-index:1;pointer-events:none}
-.hero-deco svg{position:absolute}
-.hero-deco img{position:absolute;object-fit:contain;background:#fff;border-radius:18px;padding:8px;
-  box-shadow:0 14px 34px rgba(120,100,110,.17)}
+/* hero decoration: the illustration cluster, edges feathered into the gradient */
+.hero-deco{position:absolute;top:50%;right:max(6px,3vw);transform:translateY(-50%);
+  width:clamp(250px,26vw,380px);z-index:1;pointer-events:none}
+.hero-art{width:100%;height:auto;display:block;mix-blend-mode:multiply;
+  -webkit-mask-image:radial-gradient(125% 118% at 50% 50%,#000 60%,transparent 85%);
+          mask-image:radial-gradient(125% 118% at 50% 50%,#000 60%,transparent 85%)}
 @media(max-width:1000px){.hero-deco{display:none}}
 
 /* category circles (real product photos, no boxes) */
@@ -281,21 +282,9 @@ var IALIAS = {shampo:'pastrues',balsam:'hidratues',maske_floke:'maske',vaj_floke
   mu_fytyre:'fytyra',mu_syte:'syte',mu_buze:'buzet'};
 function icon(k){k=IALIAS[k]||k;return ICON[k]?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ICON[k]+'</svg>':'';}
 
-// hero decoration: real product photos from the stores, over soft watercolor blobs
-var HERO_BLOBS = '<svg width="300" height="390" viewBox="0 0 300 390" style="top:0;left:0">'+
-  '<ellipse cx="88" cy="140" rx="60" ry="68" fill="#dcf0e7"/>'+
-  '<ellipse cx="212" cy="108" rx="56" ry="64" fill="#fde0e9"/>'+
-  '<ellipse cx="170" cy="300" rx="70" ry="52" fill="#f6e5ed"/></svg>';
+// hero decoration: the hand-drawn skincare illustration cluster (brand/hero-art.png)
 function heroDecoHTML(){
-  function pic(testFn, st){
-    var u = firstPhoto(testFn);
-    return u ? '<img src="'+esc(u)+'" alt="" style="'+st+'">' : '';
-  }
-  return '<div class="hero-deco">'+HERO_BLOBS+
-    pic(function(x){return x.type==='serum';},      'top:52px;left:18px;width:104px;height:130px')+
-    pic(function(x){return x.type==='krem_dielli';},'top:14px;left:168px;width:100px;height:130px')+
-    pic(function(x){return x.type==='hidratues';},  'top:250px;left:80px;width:132px;height:112px')+
-    '</div>';
+  return '<div class="hero-deco"><img class="hero-art" src="assets/hero-art.png" alt=""></div>';
 }
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
@@ -634,7 +623,7 @@ def build_site(products, stores, updated, out_dir):
     (out / "data.js").write_text("window.GP=" + data + ";", encoding="utf-8")
     (out / "assets" / "app.css").write_text(CSS, encoding="utf-8")
     (out / "assets" / "app.js").write_text(JS, encoding="utf-8")
-    for asset in ("logo.png", "logo-icon.png", "favicon.png"):
+    for asset in ("logo.png", "logo-icon.png", "favicon.png", "hero-art.png"):
         src = BRAND_DIR / asset
         if src.exists():
             shutil.copyfile(src, out / "assets" / asset)
