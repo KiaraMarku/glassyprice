@@ -93,26 +93,28 @@ a:hover{text-decoration:underline}
   border-radius:50%;border:none;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .nav-search .go svg{width:15px;height:15px}
 
-/* hero */
-.hero{position:relative;text-align:center;padding:50px 22px 46px;margin:6px 0 4px;border-radius:28px;
-  background:radial-gradient(125% 135% at 50% 0,#fde3ea 0%,#e8f6ef 52%,#fdf8f9 100%);overflow:hidden}
-.hero > *{position:relative;z-index:2}
-.hero h1{font-size:clamp(31px,6vw,50px);margin:6px 0 12px;line-height:1.08}
-.hero h1 em{font-style:italic;color:var(--accent)}
-.hero p{color:var(--ink);opacity:.72;font-size:17px;margin:0 auto 24px;max-width:560px}
-.hero .search{max-width:540px;margin:auto;display:flex;gap:8px}
-.hero .search input{flex:1;min-width:0;padding:15px 20px;font-size:16px;border:1px solid var(--line);
-  border-radius:999px;background:var(--card);color:var(--ink);outline:none;box-shadow:0 4px 18px rgba(196,85,112,.1)}
-.hero .search input:focus{border-color:var(--pink)}
-.hero .search .btn{flex:none;border:none;background:var(--accent);color:#fff;font-weight:700;font-size:15px;
-  padding:0 24px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:8px}
+/* hero — full-bleed gradient entrance */
+.hero{position:relative;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);margin-top:-20px;min-height:78vh;overflow:hidden;
+  display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:36px 22px 54px;
+  background:linear-gradient(105deg,#e7f5ef 0%,#fdeef2 52%,#fbe3ec 100%)}
+.hero-in{position:relative;z-index:2;width:100%;max-width:640px;margin:auto}
+.hero-logo{display:block;margin:0 auto}
+.hero-logo:hover{text-decoration:none}
+.hero-logo-img{width:clamp(128px,17vw,182px);height:auto;display:block;margin:0 auto -4px}
+.hero h1{font-size:clamp(32px,6.2vw,54px);margin:4px 0 14px;line-height:1.06}
+.hero h1 em{font-style:italic;color:var(--accent);font-weight:600}
+.hero p{color:var(--ink);opacity:.74;font-size:clamp(15px,2.1vw,19px);margin:0 auto 26px;max-width:520px}
+.hero .search{display:flex;align-items:center;max-width:600px;width:100%;margin:0 auto;background:#fff;
+  border:1px solid var(--line);border-radius:999px;padding:6px 6px 6px 22px;box-shadow:0 8px 26px rgba(196,85,112,.13)}
+.hero .search input{flex:1;min-width:0;border:none;outline:none;background:transparent;font-size:16px;padding:11px 0;color:var(--ink)}
+.hero .search .mag{width:20px;height:20px;color:var(--muted);margin:0 14px;flex:none}
+.hero .search .btn{flex:none;border:none;background:var(--accent);color:#fff;font-weight:600;font-size:15px;
+  padding:12px 28px;border-radius:999px;cursor:pointer}
 .hero .search .btn:hover{filter:brightness(1.05)}
-/* decorative skincare illustrations */
-.hero-deco{position:absolute;top:0;bottom:0;width:230px;z-index:1;pointer-events:none;opacity:.95}
+/* decorative skincare illustrations (right cluster only) */
+.hero-deco{position:absolute;top:50%;right:max(8px,5vw);transform:translateY(-50%);width:300px;height:390px;z-index:1;pointer-events:none}
 .hero-deco svg{position:absolute}
-.hero-deco-l{left:0}
-.hero-deco-r{right:0}
-@media(max-width:860px){.hero-deco{display:none}}
+@media(max-width:1000px){.hero-deco{display:none}}
 
 /* category circles (real product photos, no boxes) */
 .cats{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin:4px 0 6px}
@@ -277,30 +279,34 @@ var IALIAS = {shampo:'pastrues',balsam:'hidratues',maske_floke:'maske',vaj_floke
   mu_fytyre:'fytyra',mu_syte:'syte',mu_buze:'buzet'};
 function icon(k){k=IALIAS[k]||k;return ICON[k]?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ICON[k]+'</svg>':'';}
 
-// decorative skincare illustrations for the hero (mint + pink line art)
-var MINT='#86c7b0', PINK='#f4aeb9', MFILL='#e7f4ec', PFILL='#fde3ea';
-function gDropper(st){return '<svg style="'+st+'" width="60" height="140" viewBox="0 0 60 140">'+
-  '<rect x="22" y="6" width="16" height="30" rx="7" fill="'+PINK+'"/>'+
-  '<rect x="24.5" y="34" width="11" height="9" fill="'+MFILL+'" stroke="'+MINT+'" stroke-width="2.5"/>'+
-  '<rect x="13" y="43" width="34" height="90" rx="13" fill="'+MFILL+'" stroke="'+MINT+'" stroke-width="2.5"/>'+
-  '<rect x="20" y="68" width="20" height="46" rx="4" fill="#fff" stroke="'+PINK+'" stroke-width="2"/></svg>';}
-function gTube(st){return '<svg style="'+st+'" width="56" height="140" viewBox="0 0 56 140">'+
-  '<rect x="20" y="6" width="16" height="16" rx="3" fill="'+MINT+'"/>'+
-  '<rect x="14" y="22" width="28" height="110" rx="13" fill="'+PFILL+'" stroke="'+PINK+'" stroke-width="2.5"/>'+
-  '<circle cx="28" cy="86" r="8.5" fill="none" stroke="'+PINK+'" stroke-width="2.5"/>'+
-  '<g stroke="'+PINK+'" stroke-width="2.5" stroke-linecap="round">'+
-  '<path d="M28 70v4M28 98v4M10 86h4M42 86h4M16 74l3 3M40 74l-3 3M16 98l3-3M40 98l-3-3"/></g></svg>';}
-function gJar(st){return '<svg style="'+st+'" width="88" height="68" viewBox="0 0 88 68">'+
-  '<rect x="16" y="26" width="56" height="38" rx="11" fill="'+MFILL+'" stroke="'+MINT+'" stroke-width="2.5"/>'+
-  '<rect x="12" y="13" width="64" height="18" rx="9" fill="'+PINK+'"/></svg>';}
-function gLeaf(st){return '<svg style="'+st+'" width="46" height="46" viewBox="0 0 46 46">'+
-  '<path d="M40 6C16 6 6 16 6 40 30 40 40 30 40 6z" fill="#cdeadd" stroke="'+MINT+'" stroke-width="2"/>'+
-  '<path d="M9 37C16 26 26 18 37 11" fill="none" stroke="'+MINT+'" stroke-width="2"/></svg>';}
-var heroDeco =
-  '<div class="hero-deco hero-deco-r">'+gDropper('top:20px;right:122px')+gTube('top:58px;right:30px')+
-    gJar('top:196px;right:84px')+gLeaf('top:170px;right:12px')+'</div>'+
-  '<div class="hero-deco hero-deco-l">'+gJar('top:42px;left:18px')+gTube('top:150px;left:30px')+
-    gLeaf('top:34px;left:150px')+'</div>';
+// decorative skincare illustrations for the hero (line art over soft watercolor blobs)
+var INK='#6f6a76';
+function gDropper(st){return '<svg style="'+st+'" width="92" height="178" viewBox="0 0 92 178">'+
+  '<rect x="36" y="4" width="20" height="40" rx="9" fill="#3b3540"/>'+
+  '<rect x="43" y="42" width="6" height="42" fill="#8a8591"/>'+
+  '<rect x="26" y="60" width="40" height="13" rx="3" fill="#eef7f2" stroke="'+INK+'" stroke-width="2"/>'+
+  '<rect x="24" y="72" width="44" height="98" rx="16" fill="#eef7f2" stroke="'+INK+'" stroke-width="2"/>'+
+  '<path d="M26 130h40v24a16 16 0 0 1-16 16h-8a16 16 0 0 1-16-16z" fill="#b9e4d2"/>'+
+  '<rect x="33" y="92" width="26" height="30" rx="3" fill="#fff" stroke="#f4aeb9" stroke-width="1.6"/></svg>';}
+function gTube(st){return '<svg style="'+st+'" width="76" height="166" viewBox="0 0 76 166">'+
+  '<rect x="28" y="4" width="20" height="18" rx="3" fill="#cfcad4"/>'+
+  '<rect x="20" y="22" width="36" height="130" rx="8" fill="#fbf4ee" stroke="'+INK+'" stroke-width="2"/>'+
+  '<line x1="25" y1="147" x2="51" y2="147" stroke="'+INK+'" stroke-width="2"/>'+
+  '<circle cx="38" cy="84" r="11" fill="none" stroke="#f0a87f" stroke-width="2.4"/>'+
+  '<g stroke="#f0a87f" stroke-width="2.4" stroke-linecap="round">'+
+  '<path d="M38 64v6M38 98v6M15 84h6M55 84h6M23 69l4 4M53 69l-4 4M23 99l4-4M53 99l-4-4"/></g></svg>';}
+function gJar(st){return '<svg style="'+st+'" width="124" height="96" viewBox="0 0 124 96">'+
+  '<path d="M22 40v30a34 12 0 0 0 68 0V40" fill="#eef7f2" stroke="'+INK+'" stroke-width="2"/>'+
+  '<ellipse cx="56" cy="40" rx="34" ry="12" fill="#fff" stroke="'+INK+'" stroke-width="2"/>'+
+  '<ellipse cx="56" cy="40" rx="24" ry="7" fill="#dff0e9"/>'+
+  '<g transform="rotate(-16 98 40)"><path d="M72 36v9a26 9 0 0 0 52 0v-9" fill="#e7a9b6"/>'+
+  '<ellipse cx="98" cy="36" rx="26" ry="9" fill="#f4aeb9"/></g></svg>';}
+var heroDeco = '<div class="hero-deco">'+
+  '<svg width="300" height="390" viewBox="0 0 300 390" style="top:0;left:0">'+
+    '<ellipse cx="92" cy="150" rx="58" ry="66" fill="#dcf0e7"/>'+
+    '<ellipse cx="208" cy="104" rx="54" ry="62" fill="#fde0e9"/>'+
+    '<ellipse cx="176" cy="300" rx="68" ry="50" fill="#f6e5ed"/></svg>'+
+  gDropper('top:70px;left:40px')+gTube('top:32px;left:170px')+gJar('top:250px;left:92px')+'</div>';
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -486,14 +492,15 @@ function landing(){
   }).join('');
 
   app.innerHTML =
-    '<section class="hero">'+heroDeco+
-    '<a class="hero-logo" href="index.html"><img class="hero-logo-img" src="assets/logo.png" alt="glassprice"></a>'+
+    '<section class="hero">'+heroDeco+'<div class="hero-in">'+
+    '<a class="hero-logo" href="index.html"><img class="hero-logo-img" src="assets/logo-icon.png" alt="glassprice"></a>'+
     '<h1>Çmime <em>transparente</em><br>për lëkurë si <em>xhami</em>.</h1>'+
     '<p>Krahaso çmimin dhe gjendjen e çdo produkti K-beauty në '+Object.keys(S).length+
     ' dyqanet shqiptare — në një faqe të vetme.</p>'+
     '<form class="search" onsubmit="location.href=\'kerko.html?q=\'+encodeURIComponent(this.q.value);return false;">'+
     '<input name="q" type="search" placeholder="Kërko produkt ose markë (p.sh. cosrx snail)">'+
-    '<button class="btn" type="submit"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg>Kërko</button></form></section>'+
+    '<svg class="mag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg>'+
+    '<button class="btn" type="submit">Kërko</button></form></div></section>'+
     '<div class="sec"><h2>Blej sipas kategorisë</h2></div><div class="cats">'+catCircles+'</div>'+
     '<div class="sec"><h2>Zbritjet më të mëdha</h2><a class="more" href="oferta.html">Të gjitha ofertat →</a></div>'+
     '<div class="grid">'+drops.map(card).join('')+'</div>'+
