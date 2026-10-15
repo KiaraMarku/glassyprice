@@ -111,9 +111,11 @@ a:hover{text-decoration:underline}
 .hero .search .btn{flex:none;border:none;background:var(--accent);color:#fff;font-weight:600;font-size:15px;
   padding:12px 28px;border-radius:999px;cursor:pointer}
 .hero .search .btn:hover{filter:brightness(1.05)}
-/* decorative skincare illustrations (right cluster only) */
+/* hero decoration: real product photos over soft blobs (right cluster) */
 .hero-deco{position:absolute;top:50%;right:max(8px,5vw);transform:translateY(-50%);width:300px;height:390px;z-index:1;pointer-events:none}
 .hero-deco svg{position:absolute}
+.hero-deco img{position:absolute;object-fit:contain;background:#fff;border-radius:18px;padding:8px;
+  box-shadow:0 14px 34px rgba(120,100,110,.17)}
 @media(max-width:1000px){.hero-deco{display:none}}
 
 /* category circles (real product photos, no boxes) */
@@ -279,34 +281,22 @@ var IALIAS = {shampo:'pastrues',balsam:'hidratues',maske_floke:'maske',vaj_floke
   mu_fytyre:'fytyra',mu_syte:'syte',mu_buze:'buzet'};
 function icon(k){k=IALIAS[k]||k;return ICON[k]?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ICON[k]+'</svg>':'';}
 
-// decorative skincare illustrations for the hero (line art over soft watercolor blobs)
-var INK='#6f6a76';
-function gDropper(st){return '<svg style="'+st+'" width="92" height="178" viewBox="0 0 92 178">'+
-  '<rect x="36" y="4" width="20" height="40" rx="9" fill="#3b3540"/>'+
-  '<rect x="43" y="42" width="6" height="42" fill="#8a8591"/>'+
-  '<rect x="26" y="60" width="40" height="13" rx="3" fill="#eef7f2" stroke="'+INK+'" stroke-width="2"/>'+
-  '<rect x="24" y="72" width="44" height="98" rx="16" fill="#eef7f2" stroke="'+INK+'" stroke-width="2"/>'+
-  '<path d="M26 130h40v24a16 16 0 0 1-16 16h-8a16 16 0 0 1-16-16z" fill="#b9e4d2"/>'+
-  '<rect x="33" y="92" width="26" height="30" rx="3" fill="#fff" stroke="#f4aeb9" stroke-width="1.6"/></svg>';}
-function gTube(st){return '<svg style="'+st+'" width="76" height="166" viewBox="0 0 76 166">'+
-  '<rect x="28" y="4" width="20" height="18" rx="3" fill="#cfcad4"/>'+
-  '<rect x="20" y="22" width="36" height="130" rx="8" fill="#fbf4ee" stroke="'+INK+'" stroke-width="2"/>'+
-  '<line x1="25" y1="147" x2="51" y2="147" stroke="'+INK+'" stroke-width="2"/>'+
-  '<circle cx="38" cy="84" r="11" fill="none" stroke="#f0a87f" stroke-width="2.4"/>'+
-  '<g stroke="#f0a87f" stroke-width="2.4" stroke-linecap="round">'+
-  '<path d="M38 64v6M38 98v6M15 84h6M55 84h6M23 69l4 4M53 69l-4 4M23 99l4-4M53 99l-4-4"/></g></svg>';}
-function gJar(st){return '<svg style="'+st+'" width="124" height="96" viewBox="0 0 124 96">'+
-  '<path d="M22 40v30a34 12 0 0 0 68 0V40" fill="#eef7f2" stroke="'+INK+'" stroke-width="2"/>'+
-  '<ellipse cx="56" cy="40" rx="34" ry="12" fill="#fff" stroke="'+INK+'" stroke-width="2"/>'+
-  '<ellipse cx="56" cy="40" rx="24" ry="7" fill="#dff0e9"/>'+
-  '<g transform="rotate(-16 98 40)"><path d="M72 36v9a26 9 0 0 0 52 0v-9" fill="#e7a9b6"/>'+
-  '<ellipse cx="98" cy="36" rx="26" ry="9" fill="#f4aeb9"/></g></svg>';}
-var heroDeco = '<div class="hero-deco">'+
-  '<svg width="300" height="390" viewBox="0 0 300 390" style="top:0;left:0">'+
-    '<ellipse cx="92" cy="150" rx="58" ry="66" fill="#dcf0e7"/>'+
-    '<ellipse cx="208" cy="104" rx="54" ry="62" fill="#fde0e9"/>'+
-    '<ellipse cx="176" cy="300" rx="68" ry="50" fill="#f6e5ed"/></svg>'+
-  gDropper('top:70px;left:40px')+gTube('top:32px;left:170px')+gJar('top:250px;left:92px')+'</div>';
+// hero decoration: real product photos from the stores, over soft watercolor blobs
+var HERO_BLOBS = '<svg width="300" height="390" viewBox="0 0 300 390" style="top:0;left:0">'+
+  '<ellipse cx="88" cy="140" rx="60" ry="68" fill="#dcf0e7"/>'+
+  '<ellipse cx="212" cy="108" rx="56" ry="64" fill="#fde0e9"/>'+
+  '<ellipse cx="170" cy="300" rx="70" ry="52" fill="#f6e5ed"/></svg>';
+function heroDecoHTML(){
+  function pic(testFn, st){
+    var u = firstPhoto(testFn);
+    return u ? '<img src="'+esc(u)+'" alt="" style="'+st+'">' : '';
+  }
+  return '<div class="hero-deco">'+HERO_BLOBS+
+    pic(function(x){return x.type==='serum';},      'top:52px;left:18px;width:104px;height:130px')+
+    pic(function(x){return x.type==='krem_dielli';},'top:14px;left:168px;width:100px;height:130px')+
+    pic(function(x){return x.type==='hidratues';},  'top:250px;left:80px;width:132px;height:112px')+
+    '</div>';
+}
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -492,7 +482,7 @@ function landing(){
   }).join('');
 
   app.innerHTML =
-    '<section class="hero">'+heroDeco+'<div class="hero-in">'+
+    '<section class="hero">'+heroDecoHTML()+'<div class="hero-in">'+
     '<a class="hero-logo" href="index.html"><img class="hero-logo-img" src="assets/logo-icon.png" alt="glassprice"></a>'+
     '<h1>Çmime <em>transparente</em><br>për lëkurë si <em>xhami</em>.</h1>'+
     '<p>Krahaso çmimin dhe gjendjen e çdo produkti K-beauty në '+Object.keys(S).length+
