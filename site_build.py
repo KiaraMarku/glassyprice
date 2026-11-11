@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Multi-page static site generator for Glass Price.
+Multi-page static site generator for Glassyprice.
 
 build_site(products, stores, updated, out_dir) writes:
     <out>/data.js            window.GP = {...} shared by every page (works from file://)
@@ -37,7 +37,7 @@ CONCERNS = {
 TYPES = {
     "pastrues": "Pastrues", "toner": "Toner", "serum": "Serum & Esencë",
     "hidratues": "Hidratues", "maske": "Maskë", "krem_dielli": "Krem Dielli",
-    "trajtim": "Trajtim (njolla/akne)",
+    "trajtim": "Trajtim lokal",
 }
 # section-specific subcategories (keys must match kbeauty.KIND_KW)
 HAIRKINDS = {"shampo": "Shampo", "balsam": "Balsam", "maske_floke": "Maskë & Trajtim",
@@ -69,42 +69,62 @@ a{color:var(--accent);text-decoration:none}
 a:hover{text-decoration:underline}
 .wrap{max-width:1080px;margin:auto;padding:20px 16px 48px}
 
-/* nav */
-.nav{background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
-.nav-in{max-width:1080px;margin:auto;padding:11px 16px;display:flex;align-items:center;gap:16px}
-.logo{font-size:23px;color:var(--ink);display:flex;align-items:center;gap:9px;line-height:1}
+/* header */
+.nav{background:rgba(255,252,253,.8);-webkit-backdrop-filter:saturate(1.3) blur(14px);backdrop-filter:saturate(1.3) blur(14px);
+  border-bottom:1px solid var(--line);box-shadow:0 2px 14px rgba(120,100,110,.06);position:sticky;top:0;z-index:20}
+.nav-in{max-width:1120px;margin:auto;padding:14px 18px;display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.logo{font-size:24px;color:var(--ink);display:flex;align-items:center;gap:9px;line-height:1;flex:none}
 .logo:hover{text-decoration:none}
-.logo-icon{width:30px;height:30px;flex:none}
+.logo-icon{width:32px;height:32px;flex:none}
 .logo b{color:var(--brand-mint);font-weight:600}
 .logo i{color:var(--brand-pink);font-weight:600;font-style:normal}
-.hero-logo{display:block;margin-bottom:6px}
-.hero-logo:hover{text-decoration:none}
-.hero-logo-img{width:240px;max-width:72vw;height:auto;display:block;margin:0 auto}
-.nav-links{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
-.nav-links a{color:var(--ink);font-size:14.5px;text-decoration:underline;text-underline-offset:5px;
-  text-decoration-thickness:1px;text-decoration-color:var(--line)}
-.nav-links a:hover{color:var(--accent);text-decoration-color:var(--accent)}
-/* search on the right of the header */
-.nav-search{margin-left:auto;position:relative;flex:0 1 300px;min-width:190px}
-.nav-search input{width:100%;padding:9px 46px 9px 16px;font-size:14px;border:1px solid var(--line);
-  border-radius:999px;background:var(--bg);color:var(--ink);outline:none}
-.nav-search input:focus{border-color:var(--pink);background:var(--card)}
-.nav-search .go{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:30px;height:30px;
-  border-radius:50%;border:none;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
-.nav-search .go svg{width:15px;height:15px}
+.nav-links{flex:1;display:flex;justify-content:center;gap:26px;flex-wrap:wrap}
+.nav-links a{position:relative;color:var(--ink);font-family:Fraunces,Georgia,serif;font-size:16px;
+  font-weight:500;padding:3px 1px;white-space:nowrap;text-decoration:none}
+.nav-links a::after{content:"";position:absolute;left:0;right:0;bottom:-3px;height:2px;border-radius:2px;
+  background:var(--pink);transform:scaleX(0);transition:transform .18s ease}
+.nav-links a:hover{color:var(--accent);text-decoration:none}
+.nav-links a:hover::after,.nav-links a.active::after{transform:scaleX(1)}
+.nav-links a.active{color:var(--accent)}
+/* search on the right of the header — light outlined pill, magnifier left */
+.nav-search{flex:0 0 auto;position:relative;width:250px;max-width:40vw}
+.nav-search .mag{position:absolute;left:15px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--muted);pointer-events:none}
+.nav-search input{width:100%;padding:9px 16px 9px 40px;font-size:14px;border:1px solid var(--line);
+  border-radius:999px;background:transparent;color:var(--ink);outline:none}
+.nav-search input::placeholder{color:var(--muted)}
+.nav-search input:focus{border-color:var(--pink)}
+/* live-search dropdown */
+.ac{position:absolute;top:calc(100% + 7px);left:0;right:0;background:#fff;border:1px solid var(--line);
+  border-radius:16px;box-shadow:0 14px 38px rgba(120,100,110,.18);overflow:hidden;z-index:40;display:none;text-align:left}
+.ac.open{display:block}
+.ac a{display:flex;align-items:center;gap:11px;padding:9px 13px;color:var(--ink)}
+.ac a:hover{background:var(--accent-soft);text-decoration:none}
+.ac img{width:42px;height:42px;object-fit:cover;border-radius:9px;background:var(--line);flex:none}
+.ac .meta{display:flex;flex-direction:column;min-width:0}
+.ac .b{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);font-weight:700}
+.ac .n{font-size:13px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ac .p{margin-left:auto;font-weight:700;white-space:nowrap;font-size:13px;font-variant-numeric:tabular-nums}
+.ac .all{padding:11px 13px;font-size:13px;color:var(--accent);font-weight:600;border-top:1px solid var(--line)}
+.ac .no{padding:14px 13px;color:var(--muted);font-size:13px}
 
 /* hero — full-bleed gradient entrance */
 .hero{position:relative;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);margin-top:-20px;min-height:78vh;overflow:hidden;
   display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:36px 22px 54px;
-  background:linear-gradient(105deg,#e7f5ef 0%,#fdeef2 52%,#fbe3ec 100%)}
+  background:linear-gradient(105deg,#fbe3ec 0%,#fdeef2 50%,#e7f5ef 100%)}
 .hero-in{position:relative;z-index:2;width:100%;max-width:640px;margin:auto}
 .hero-logo{display:block;margin:0 auto}
 .hero-logo:hover{text-decoration:none}
-.hero-logo-img{width:clamp(128px,17vw,182px);height:auto;display:block;margin:0 auto -4px}
-.hero h1{font-size:clamp(32px,6.2vw,54px);margin:4px 0 14px;line-height:1.06}
+.hero-logo-img{width:clamp(108px,13vw,150px);height:auto;display:block;margin:0 auto -2px}
+.hero h1{font-size:clamp(26px,4.6vw,42px);margin:4px 0 12px;line-height:1.08}
 .hero h1 em{font-style:italic;color:var(--accent);font-weight:600}
-.hero p{color:var(--ink);opacity:.74;font-size:clamp(15px,2.1vw,19px);margin:0 auto 26px;max-width:520px}
-.hero .search{display:flex;align-items:center;max-width:600px;width:100%;margin:0 auto;background:#fff;
+.hero p{color:var(--ink);opacity:.74;font-size:clamp(14px,1.8vw,17px);margin:0 auto 22px;max-width:480px}
+/* glass-skin face cutout, top-left, soft bottom fade into the gradient */
+.hero-face{position:absolute;top:62px;left:max(0px,1vw);z-index:1;pointer-events:none;
+  width:clamp(230px,26vw,360px);height:auto;opacity:.92;
+  -webkit-mask-image:radial-gradient(circle at 50% 44%,#000 36%,transparent 62%);
+          mask-image:radial-gradient(circle at 50% 44%,#000 36%,transparent 62%)}
+@media(max-width:1000px){.hero-face{display:none}}
+.hero .search{position:relative;display:flex;align-items:center;max-width:600px;width:100%;margin:0 auto;background:#fff;
   border:1px solid var(--line);border-radius:999px;padding:6px 6px 6px 22px;box-shadow:0 8px 26px rgba(196,85,112,.13)}
 .hero .search input{flex:1;min-width:0;border:none;outline:none;background:transparent;font-size:16px;padding:11px 0;color:var(--ink)}
 .hero .search .mag{width:20px;height:20px;color:var(--muted);margin:0 14px;flex:none}
@@ -114,9 +134,7 @@ a:hover{text-decoration:underline}
 /* hero decoration: the illustration cluster, edges feathered into the gradient */
 .hero-deco{position:absolute;top:50%;right:max(6px,3vw);transform:translateY(-50%);
   width:clamp(250px,26vw,380px);z-index:1;pointer-events:none}
-.hero-art{width:100%;height:auto;display:block;mix-blend-mode:multiply;
-  -webkit-mask-image:radial-gradient(125% 118% at 50% 50%,#000 60%,transparent 85%);
-          mask-image:radial-gradient(125% 118% at 50% 50%,#000 60%,transparent 85%)}
+.hero-art{width:100%;height:auto;display:block}
 @media(max-width:1000px){.hero-deco{display:none}}
 
 /* category circles (real product photos, no boxes) */
@@ -140,15 +158,14 @@ a:hover{text-decoration:underline}
 .sec .more{margin-left:auto;font-size:14px}
 .lead{color:var(--muted);margin:2px 0 0}
 
-/* category page intro banner (real product photo) */
-.pagehead{display:flex;align-items:center;gap:22px;border-radius:24px;margin:6px 0 20px;padding:26px 28px;
-  background:linear-gradient(120deg,#eaf6f0 0%,#fde3ea 100%)}
+/* category page header — clean editorial, no gradient */
+.pagehead{display:flex;align-items:center;gap:24px;margin:2px 0 22px;padding:2px 2px 20px;border-bottom:1px solid var(--line)}
 .pagehead .ph-txt{flex:1;min-width:0}
-.pagehead h1{margin:0 0 5px;font-size:clamp(25px,4.2vw,36px)}
-.pagehead .ph-txt p{margin:0;color:var(--ink);opacity:.68;font-size:15px}
-.pagehead .ph-img{width:116px;height:116px;border-radius:20px;object-fit:cover;background:#fff;
-  box-shadow:0 6px 20px rgba(196,85,112,.14);flex:none}
-@media(max-width:560px){.pagehead{padding:22px}.pagehead .ph-img{display:none}}
+.pagehead h1{margin:0 0 5px;font-size:clamp(26px,4.4vw,40px)}
+.pagehead .ph-txt p{margin:0;color:var(--muted);font-size:15px}
+.pagehead .ph-img{width:116px;height:116px;border-radius:50%;object-fit:cover;flex:none;
+  border:4px solid #fff;box-shadow:0 10px 26px rgba(120,100,110,.16);outline:1px solid var(--line);outline-offset:-1px}
+@media(max-width:560px){.pagehead .ph-img{width:86px;height:86px}}
 
 /* filter panel — keep category selection clean */
 .filters-panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px 18px;margin:0 0 20px}
@@ -164,6 +181,12 @@ a:hover{text-decoration:underline}
 .tile .tic svg{width:100%;height:100%}
 .tile .t{font-weight:600;font-size:15px}
 .tile .c{color:var(--muted);font-size:13px;margin-top:-5px}
+
+/* brand list — simple pink links in columns */
+.brandlist{column-width:188px;column-gap:30px;margin-top:2px}
+.brandlink{display:block;padding:5px 0;color:var(--accent);font-size:15px;break-inside:avoid}
+.brandlink:hover{text-decoration:underline}
+.brandlink span{color:var(--muted);font-size:12px;margin-left:3px}
 
 /* section heading icon */
 .sec h2 .hic{width:22px;height:22px;color:var(--accent);vertical-align:-4px;margin-right:9px}
@@ -294,7 +317,7 @@ function fmt(n){return n==null?'':n.toLocaleString('sq-AL').replace(/[\s, ]/g,'
 function volfmt(v){return v?v.replace(/^([\d.]+)(\D+)$/,'$1 $2').replace('pcs','copë').replace('pairs','palë'):'';}
 function slug(s){return fold(s).replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');}
 function qp(k){return new URLSearchParams(location.search).get(k);}
-function wordmark(){return '<span class="w"><b>glass</b><i>price</i></span>';}
+function wordmark(){return '<span class="w"><b>glassy</b><i>price</i></span>';}
 
 GP.products.forEach(function(p){
   var ins = p.offers.filter(function(o){return o.in_stock&&o.price!=null;});
@@ -320,6 +343,34 @@ function offerHTML(o,best){
 var PH = GP.photos || {};
 // first product (most popular, since data is pop-sorted) matching a test, with an image
 function firstPhoto(testFn){var p=GP.products.find(function(x){return x.image&&testFn(x);});return p?p.image:'';}
+
+// live-search dropdown: show matching products as you type, under a search form
+function attachLiveSearch(form, input){
+  if(!form||!input) return;
+  var ac=document.createElement('div'); ac.className='ac'; form.appendChild(ac);
+  function close(){ac.className='ac';}
+  var t;
+  function render(){
+    var raw=input.value.trim(), q=fold(raw);
+    if(q.length<2){close();return;}
+    var terms=q.split(/\s+/).filter(Boolean);
+    var r=GP.products.filter(function(p){return terms.every(function(w){return p._hay.indexOf(w)>=0;});});
+    var top=r.slice(0,6).map(function(p){
+      var img=p.image?'<img src="'+esc(p.image)+'" alt="">':'<img alt="">';
+      var price=p._min<Infinity?'<span class="p">'+fmt(p._min)+'</span>':'';
+      return '<a href="produkt.html?p='+p.i+'">'+img+'<span class="meta"><span class="b">'+esc(p.brand)+
+        '</span><span class="n">'+esc(p.name)+'</span></span>'+price+'</a>';
+    }).join('');
+    ac.innerHTML = r.length
+      ? top+'<a class="all" href="kerko.html?q='+encodeURIComponent(raw)+'">Shiko të gjitha '+r.length+' rezultatet →</a>'
+      : '<div class="no">Asnjë produkt për “'+esc(raw)+'”.</div>';
+    ac.className='ac open';
+  }
+  input.addEventListener('input',function(){clearTimeout(t);t=setTimeout(render,110);});
+  input.addEventListener('focus',function(){if(input.value.trim().length>=2) render();});
+  document.addEventListener('click',function(e){if(!form.contains(e.target)) close();});
+  input.addEventListener('keydown',function(e){if(e.key==='Escape') close();});
+}
 function keyPhoto(key, testFn){return PH[key] || firstPhoto(testFn);}
 function badges(p){
   var b='';
@@ -395,7 +446,13 @@ function collection(cfg){
 
   var head;
   if(cfg.banner){
-    var bimg = (cfg.photoKey&&PH[cfg.photoKey]) || firstPhoto(cfg.filter||function(){return true;});
+    var bimg = cfg.photoKey && PH[cfg.photoKey];
+    if(!bimg){
+      var pool = base.filter(function(p){return p.image && p._any;});       // prefer in-stock
+      if(!pool.length) pool = base.filter(function(p){return p.image;});
+      if(cfg.bannerSort==='disc') pool = pool.slice().sort(function(a,b){return b._disc-a._disc;});
+      bimg = pool.length ? pool[0].image : '';
+    }
     head = '<div class="pagehead"><div class="ph-txt"><h1>'+esc(cfg.heading)+'</h1>'+
       (cfg.lead?'<p>'+esc(cfg.lead)+'</p>':'')+'</div>'+
       (bimg?'<img class="ph-img" src="'+esc(bimg)+'" alt="">':'')+'</div>';
@@ -471,11 +528,12 @@ function landing(){
   }).join('');
 
   app.innerHTML =
-    '<section class="hero">'+heroDecoHTML()+'<div class="hero-in">'+
-    '<a class="hero-logo" href="index.html"><img class="hero-logo-img" src="assets/logo-icon.png" alt="glassprice"></a>'+
-    '<h1>Çmime <em>transparente</em><br>për lëkurë si <em>xhami</em>.</h1>'+
+    '<section class="hero">'+heroDecoHTML()+
+    '<img class="hero-face" src="assets/hero-face.png" alt="">'+'<div class="hero-in">'+
+    '<a class="hero-logo" href="index.html"><img class="hero-logo-img" src="assets/logo-icon.png" alt="glassyprice"></a>'+
+    '<h1>Çmime <em>transparente</em><br>për një lëkurë <em>transparente</em>.</h1>'+
     '<p>Krahaso çmimin dhe gjendjen e çdo produkti K-beauty në '+Object.keys(S).length+
-    ' dyqanet shqiptare — në një faqe të vetme.</p>'+
+    ' dyqanet shqiptare, në një faqe të vetme.</p>'+
     '<form class="search" onsubmit="location.href=\'kerko.html?q=\'+encodeURIComponent(this.q.value);return false;">'+
     '<input name="q" type="search" placeholder="Kërko produkt ose markë (p.sh. cosrx snail)">'+
     '<svg class="mag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg>'+
@@ -486,6 +544,7 @@ function landing(){
     '<div class="sec"><h2>Bestsellers</h2><a class="more" href="bestsellers.html">Shiko të gjitha →</a></div>'+
     '<div class="grid">'+best.map(card).join('')+'</div>'+
     '<div class="sec"><h2>Blej sipas problemit</h2></div><div class="cats">'+conCircles+'</div>';
+  attachLiveSearch(document.querySelector('.hero .search'), document.querySelector('.hero .search input'));
 }
 
 // ---- product detail ----
@@ -499,7 +558,7 @@ function product(){
     .concat(p.type?['<a class="chip" href="kerko.html?q='+encodeURIComponent(TYP[p.type]||p.type)+'">'+icon(p.type)+esc(TYP[p.type])+'</a>']:[])
     .concat((p.concerns||[]).map(function(k){return '<a class="chip" href="problema-'+k+'.html">'+icon(k)+esc(CON[k]||k)+'</a>';})).join(' ');
   var save = p._save>0?'<span class="save">Kurse deri në '+fmt(p._save)+' duke blerë te më i liri</span>':'';
-  document.title = p.name+' · Glass Price';
+  document.title = p.name+' · Glassyprice';
   app.innerHTML =
     '<a class="back" href="javascript:history.length>1?history.back():location.href=\'index.html\'">← Kthehu</a>'+
     '<div class="detail"><div>'+(p.image?'<img class="hero-img" src="'+esc(p.image)+'" alt="">':'')+'</div>'+
@@ -509,7 +568,7 @@ function product(){
     (chips?'<div class="facets" style="margin-top:18px">'+chips+'</div>':'')+
     '<p class="lead" style="margin-top:18px">Çmimet u kontrolluan së fundmi në kohën te fund i faqes. '+
     'Kliko dyqanin për të konfirmuar çmimin para blerjes.<br>'+
-    '<a href="mailto:hello@getglassprice.com?subject='+encodeURIComponent('Çmim i gabuar: '+p.name)+
+    '<a href="mailto:hello@getglassyprice.com?subject='+encodeURIComponent('Çmim i gabuar: '+p.name)+
     '">Raporto një çmim të gabuar</a></p></div></div>';
 }
 
@@ -525,10 +584,22 @@ function brands(){
   var cnt = {};
   GP.products.forEach(function(p){cnt[p.brand]=(cnt[p.brand]||0)+1;});
   var names = Object.keys(cnt).sort(function(a,b){return a.toLowerCase()<b.toLowerCase()?-1:1;});
-  app.innerHTML = '<div class="sec"><h2>Markat</h2><span class="count">'+names.length+' marka</span></div>'+
-    '<div class="tiles">'+names.map(function(n){
-      return '<a class="tile" href="marka.html?b='+slug(n)+'"><div class="t">'+esc(n)+'</div>'+
-        '<div class="c">'+cnt[n]+' produkte</div></a>';}).join('')+'</div>';
+  app.innerHTML =
+    '<div class="sec"><h2>Markat</h2><span class="count" id="bcount"></span></div>'+
+    '<div class="toolbar"><input type="search" id="bq" placeholder="Kërko markë…" autocomplete="off"></div>'+
+    '<div class="brandlist" id="blist"></div>';
+  var list = document.getElementById('blist'), q = document.getElementById('bq');
+  function run(){
+    var term = fold(q.value);
+    var r = names.filter(function(n){return fold(n).indexOf(term)>=0;});
+    document.getElementById('bcount').textContent = r.length+' marka';
+    list.innerHTML = r.length ? r.map(function(n){
+      return '<a class="brandlink" href="marka.html?b='+slug(n)+'">'+esc(n)+' <span>'+cnt[n]+'</span></a>';
+    }).join('') : '<div class="empty">Asnjë markë nuk u gjet.</div>';
+  }
+  var t;
+  q.addEventListener('input', function(){clearTimeout(t);t=setTimeout(run,100);});
+  run();
 }
 
 // ---- search ----
@@ -548,8 +619,14 @@ document.getElementById('nav').innerHTML =
   '<a href="trupi.html">Trupi</a><a href="makeup.html">Make Up</a>'+
   '<a href="oferta.html">Oferta</a><a href="bestsellers.html">Bestsellers</a><a href="marka.html">Markat</a></nav>'+
   '<form class="nav-search" onsubmit="location.href=\'kerko.html?q=\'+encodeURIComponent(this.q.value);return false;">'+
-  '<input name="q" type="search" placeholder="Kërko… (p.sh. Cosrx, Pyunkang Yul)">'+
-  '<button class="go" type="submit" aria-label="Kërko"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg></button></form></div>';
+  '<svg class="mag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg>'+
+  '<input name="q" type="search" placeholder="Kërko produkt ose markë"></form></div>';
+// highlight the current page in the nav
+var here = location.pathname.split('/').pop() || 'index.html';
+document.querySelectorAll('.nav-links a').forEach(function(a){
+  if(a.getAttribute('href')===here) a.className='active';
+});
+attachLiveSearch(document.querySelector('.nav-search'), document.querySelector('.nav-search input'));
 
 var when = new Date(GP.updated);
 document.getElementById('foot').innerHTML =
@@ -623,7 +700,7 @@ def build_site(products, stores, updated, out_dir):
     (out / "data.js").write_text("window.GP=" + data + ";", encoding="utf-8")
     (out / "assets" / "app.css").write_text(CSS, encoding="utf-8")
     (out / "assets" / "app.js").write_text(JS, encoding="utf-8")
-    for asset in ("logo.png", "logo-icon.png", "favicon.png", "hero-art.png"):
+    for asset in ("logo.png", "logo-icon.png", "favicon.png", "hero-art.png", "hero-face.png"):
         src = BRAND_DIR / asset
         if src.exists():
             shutil.copyfile(src, out / "assets" / asset)
@@ -640,21 +717,21 @@ def build_site(products, stores, updated, out_dir):
         "sete":   "facets:[]",
     }
     pages = {
-        "index.html": ("Glass Price — Krahaso çmimet K-beauty në Shqipëri",
+        "index.html": ("Glassyprice · Krahaso çmimet K-beauty në Shqipëri",
                        "Krahaso çmimin dhe gjendjen e çdo produkti K-beauty në dyqanet shqiptare.", "gp.landing();"),
-        "bestsellers.html": ("Bestsellers · Glass Price", "Produktet K-beauty më të shitura.",
-                             "gp.collection({heading:'Bestsellers',banner:true,lead:'Produktet më të kërkuara.',filter:function(p){return p.best;},%s});" % SEC_FACET),
-        "oferta.html": ("Oferta · Glass Price", "Produktet K-beauty me zbritje.",
-                        "gp.collection({heading:'Oferta',banner:true,lead:'Produktet me zbritje, renditur nga zbritja më e madhe.',filter:function(p){return p.offers.some(function(o){return o.compare_at;});},sort:'disc',%s});" % SEC_FACET),
-        "marka.html": ("Markat · Glass Price", "Të gjitha markat K-beauty.", "gp.brands();"),
-        "produkt.html": ("Produkt · Glass Price", "Krahaso çmimet për këtë produkt.", "gp.product();"),
-        "kerko.html": ("Kërko · Glass Price", "Kërko produkte K-beauty.", "gp.search();"),
+        "bestsellers.html": ("Bestsellers · Glassyprice", "Produktet K-beauty më të shitura.",
+                             "gp.collection({heading:'Bestsellers',banner:true,photoKey:'bestsellers',lead:'Produktet më të kërkuara.',filter:function(p){return p.best;},%s});" % SEC_FACET),
+        "oferta.html": ("Oferta · Glassyprice", "Produktet K-beauty me zbritje.",
+                        "gp.collection({heading:'Oferta',banner:true,photoKey:'oferta',bannerSort:'disc',lead:'Produktet me zbritje, renditur nga zbritja më e madhe.',filter:function(p){return p.offers.some(function(o){return o.compare_at;});},sort:'disc',%s});" % SEC_FACET),
+        "marka.html": ("Markat · Glassyprice", "Të gjitha markat K-beauty.", "gp.brands();"),
+        "produkt.html": ("Produkt · Glassyprice", "Krahaso çmimet për këtë produkt.", "gp.product();"),
+        "kerko.html": ("Kërko · Glassyprice", "Kërko produkte K-beauty.", "gp.search();"),
     }
     for key, label in SECTIONS.items():
-        pages[f"{key}.html"] = (f"{label} · Glass Price", f"Produkte K-beauty: {label}.",
+        pages[f"{key}.html"] = (f"{label} · Glassyprice", f"Produkte K-beauty: {label}.",
                                 "gp.collection({heading:%r,banner:true,photoKey:%r,%s,filter:function(p){return (p.sections||[]).indexOf(%r)>=0;}});" % (label, key, SECTION_FACETS[key], key))
     for key, label in CONCERNS.items():
-        pages[f"problema-{key}.html"] = (f"{label} · Glass Price", f"Produkte K-beauty për: {label}.",
+        pages[f"problema-{key}.html"] = (f"{label} · Glassyprice", f"Produkte K-beauty për: {label}.",
                                          "gp.collection({heading:%r,banner:true,photoKey:%r,lead:'Produkte K-beauty për: %s.',filter:function(p){return (p.concerns||[]).indexOf(%r)>=0;},facets:[{id:'typ',label:'Lloji',map:'types',field:'type'}]});" % (label, key, label, key))
 
     for name, (title, desc, init) in pages.items():
