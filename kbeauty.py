@@ -57,6 +57,10 @@ EXTRA_BRANDS = [
 ]
 
 MATCH_THRESHOLD = 85      # 0-100, higher = stricter
+# If two "matched" items are both in stock, neither on sale, yet one costs this
+# many times the other, it's almost always a bad match (different size/sample or
+# a mask vs the product). Refuse it — a miss beats a wrong price.
+PRICE_RATIO_GUARD = 2.2
 REQUEST_DELAY = 1.0       # seconds between requests, be polite
 USER_AGENT = "kbeauty-price-compare/0.1 (personal project)"
 OVERRIDES_FILE = Path("data/overrides.json")
@@ -92,7 +96,9 @@ STOPWORDS = {"the", "and", "with", "of", "dhe", "me", "per", "for"}
 # they are different products/versions no matter how similar the rest is.
 VERSION_WORDS = {"ex", "pro", "plus", "mini", "max", "lite", "light", "rich",
                  "ii", "iii", "iv", "edition", "set", "kit", "duo", "refill",
-                 "travel", "jumbo", "sample", "spf"}
+                 "travel", "jumbo", "sample", "spf",
+                 # a mask / pad / patch is a different product from the cream or serum
+                 "mask", "maske", "pack", "sheet", "sheets", "patch", "patches", "pad", "pads"}
 
 
 def version_conflict(a, b):
@@ -185,11 +191,18 @@ _INSECURE_CTX.verify_mode = ssl.CERT_NONE
 _warned_hosts = set()
 
 
-def get_json(url):
+def get_json(url, _tries=0):
     req = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
     try:
         with urlopen(req, timeout=30) as r:
             return json.load(r)
+    except HTTPError as e:
+        if e.code == 429 and _tries < 2:       # rate limited: a couple of polite retries, then give up
+            wait = min(30, int(e.headers.get("Retry-After") or 0) or 10 * 2 ** _tries)
+            print(f"  429 from {urlsplit(url).hostname}; waiting {wait}s then retrying...", file=sys.stderr, flush=True)
+            time.sleep(wait)
+            return get_json(url, _tries + 1)
+        raise
     except URLError as e:
         if not isinstance(e.reason, ssl.SSLCertVerificationError):
             raise
@@ -238,6 +251,8 @@ def parse_shopify(store, prods):
     items = []
     for p in prods:
         title = clean(p.get("title"))
+        if "gift card" in fold(title) or "giftcard" in fold(p.get("product_type") or ""):
+            continue      # gift cards aren't products to compare
         brand = clean(p.get("vendor")) if store.get("vendor_is_brand") else None
         tags = p.get("tags") or []
         if isinstance(tags, str):
@@ -251,6 +266,11 @@ def parse_shopify(store, prods):
         multi = len(variants) > 1
         body_vol = None if multi else parse_volume(strip_tags(p.get("body_html")))
         images = p.get("images") or []
+        prod_img = images[0]["src"] if images else None
+
+        # Collapse variants by volume: shade/color variants (same size) become ONE
+        # listing; genuine different sizes stay separate (needed to match by size).
+        groups = {}
         for v in variants:
             vol = None
             for i, oname in enumerate(opts[:3]):
@@ -259,17 +279,32 @@ def parse_shopify(store, prods):
                     unit = UNIT.get(oname.strip()) if oname.strip() in UNIT else None
                     vol = vol or parse_volume(val, default_unit=unit)
             vol = vol or parse_volume(title) or body_vol
-            url = f"{store['base']}/products/{p['handle']}"
-            if multi:
-                url += f"?variant={v['id']}"
-            img = (v.get("featured_image") or {}).get("src") or (images[0]["src"] if images else None)
             price = to_number(v.get("price"))
             cmp_at = to_number(v.get("compare_at_price"))
+            avail = bool(v.get("available"))
+            img = (v.get("featured_image") or {}).get("src") or prod_img
+            g = groups.get(vol)
+            if g is None:
+                groups[vol] = {"vid": v.get("id"), "img": img, "price": price,
+                               "cmp": cmp_at, "avail": avail}
+            else:
+                # keep the cheapest variant as the representative for this size
+                if price is not None and (g["price"] is None or price < g["price"]):
+                    g["price"], g["cmp"], g["vid"] = price, cmp_at, v.get("id")
+                    if img:
+                        g["img"] = img
+                g["avail"] = g["avail"] or avail
+
+        for vol, g in groups.items():
+            url = f"{store['base']}/products/{p['handle']}"
+            if multi and g["vid"] is not None:
+                url += f"?variant={g['vid']}"
+            price, cmp_at = g["price"], g["cmp"]
             items.append({
                 "store": store["id"], "title": title, "brand": brand, "volume": vol,
                 "price": price,
                 "compare_at": cmp_at if cmp_at and price and cmp_at > price else None,
-                "in_stock": bool(v.get("available")), "url": url, "image": img,
+                "in_stock": g["avail"], "url": url, "image": g["img"],
                 "cats": cats, "bestseller": best,
             })
     return items
@@ -329,6 +364,26 @@ def normalize(items):
     return display
 
 
+def dedupe_within_store(items):
+    """Collapse identical listings from the same store (a store listing the same
+    product twice). Keeps one per (store, brand, name, volume), preferring an
+    in-stock listing then the cheapest. Needs normalize() to have run first."""
+    seen, out = {}, []
+    for it in items:
+        key = (it["store"], it["brand_key"], it["name_key"], it["volume"])
+        if key not in seen:
+            seen[key] = len(out)
+            out.append(it)
+            continue
+        cur = out[seen[key]]
+        better = (it["in_stock"] and not cur["in_stock"]) or (
+            it["in_stock"] == cur["in_stock"] and it["price"] is not None
+            and (cur["price"] is None or it["price"] < cur["price"]))
+        if better:
+            out[seen[key]] = it
+    return out
+
+
 def load_overrides():
     if OVERRIDES_FILE.exists():
         return json.loads(OVERRIDES_FILE.read_text(encoding="utf-8"))
@@ -379,6 +434,11 @@ def match(items, overrides=None):
                     continue
                 if version_conflict(A["name_key"], B["name_key"]):
                     continue
+                pa, pb = A["price"], B["price"]
+                if pa and pb and not A["compare_at"] and not B["compare_at"]:
+                    hi, lo = max(pa, pb), min(pa, pb)
+                    if lo > 0 and hi / lo >= PRICE_RATIO_GUARD:
+                        continue      # suspicious price gap -> likely a bad match
                 s = similarity(A["name_key"], B["name_key"])
                 if s >= MATCH_THRESHOLD:
                     edges.append((s, i, j))
@@ -420,8 +480,21 @@ SECTION_KW = {
                 "foundation", "concealer", "fondatin", "blush", "eyeliner", "eyeshadow",
                 "bb cream", "cc cream", "cushion"],
     "parfume": ["parfum", "perfume", "fragrance", "mist trupi", "eau de", "body mist"],
-    "sete":    ["sete", " set", "set ", " kit", "bundle", "combo", "1+1"],
+    # whole-word only (padded with spaces) so "Setting Spray"/"1+1 promo" don't count as sets
+    "sete":    [" set ", " sets ", " kit ", " bundle ", " sete ", "gift set", "trial set", "value set", "duo set", "mini set"],
 }
+# "Perfume" is often just a scent descriptor ("Perfume Dry Shampoo", "perfume
+# hand cream"). If any of these product-form words appear, it is NOT a fragrance.
+# make-up "creams" (BB/CC/cushion/concealer/foundation) are make-up, not a skincare
+# type — so "BB Cream" must not count as a moisturiser (hidratues) type.
+MAKEUP_FORMS = ["bb cream", "cc cream", "cushion", "concealer", "fondatin", "foundation",
+                "lipstick", "lip tint", "lip gloss", "mascara", "eyeliner", "eyeshadow",
+                "blush", "bronzer", "highlighter", "setting spray", "setting powder"]
+PARFUME_EXCLUDE = ["shampoo", "shampo", "conditioner", "kondicioner", "balsam", "cream",
+                   "krem", "serum", "cleanser", "pastrues", "lotion", "locion", "mask",
+                   "maske", "scrub", "essence", "esence", "toner", "tonik", "lares",
+                   "oil", "vaj", "deodorant", "stick", "powder", "pudra", "foam", "treatment",
+                   "wash", "shower", "dush", "shampoo"]
 # Within Fytyra: skin / eyes / lips. Only skincare eye & lip *care* (not makeup).
 AREA_KW = {
     "syte":  ["eye cream", "eye serum", "eye patch", "under-eye", "under eye", "eye mask",
@@ -438,38 +511,43 @@ CONCERN_KW = {
                  "vitamin c", "glow", "ndricim", "radiance", "melasma"],
     "skuqje":   ["skuqje", "redness", "sensitive", "ndjesh", "cica", "centella", "calming", "qetesu",
                  "soothing", "madecassoside", "barrier", "relief"],
-    "hidratim": ["hidrat", "hydrat", "dehidrat", "dry skin", "thate", "hyaluron", "moistur",
-                 "ceramide", "nourish", "panthenol"],
+    # the hydration *concern* (dry/dehydrated skin) — NOT every moisturizer. Must not
+    # match the store's "Hidratues" type category, so no bare "hidrat"/"moistur".
+    "hidratim": ["hidratim", "dehidrat", "dehydrat", "dry skin", "lekure e thate", "thate",
+                 "thatesi", "hydrating", "hydration", "dewy", "thirsty"],
 }
-# Section-specific subcategories for hair / body / make-up, so each section page
-# shows its own filters (a Hair page must not offer "Toner" or "Akne").
-KIND_KW = {
-    # hair
-    "shampo":      ["shampo", "shampoo"],
-    "balsam":      ["balsam", "conditioner", "kondicioner"],
-    "maske_floke": ["hair mask", "maske floke", "maske per floke", "hair pack", "hair treatment",
-                    "trajtim floke", "ampula floke", "scalp"],
-    "vaj_floke":   ["hair oil", "vaj floke", "vaj per floke", "hair serum", "serum floke", "leave in", "leave-in"],
-    "stilues":     ["styling", "stilues", "hair spray", "gel floke", "wax", "pomade", "mousse", "heat protect"],
-    # body
-    "krem_trupi":  ["body cream", "body lotion", "krem trupi", "locion trupi", "body butter", "body milk", "krem/locion trupi"],
-    "dush":        ["shower", "dush", "body wash", "shower gel", "larje trupi", "sapun"],
-    "scrub":       ["scrub", "peeling trupi", "exfoliat"],
-    "duar_kembe":  ["hand cream", "krem duar", "foot", "kembe", "duart", "maske per duart"],
+# Section-specific subcategory for hair / body / make-up. ONE per product, chosen
+# by priority (first match wins), because stores cross-list everything into their
+# broad "shampoo"/"body cream" collections — so those generic buckets come LAST.
+KIND_KW = [
+    # hair — serum/oil/treatment/conditioner/styling rank above shampoo
+    ("vaj_floke",   ["hair oil", "vaj floke", "vaj per flok", "hair serum", "serum floke", "serum per flok",
+                     "scalp serum", "scalp tonic", "leave in", "leave-in", "hair ampoule", "ampula floke", "hair essence"]),
+    ("maske_floke", ["hair mask", "maske floke", "maske per flok", "hair pack", "hair treatment",
+                     "trajtim floke", "trajtime per flok", "scalp mask"]),
+    ("balsam",      ["conditioner", "kondicioner", "balsam", "balzam"]),
+    ("stilues",     ["styling", "stilues", "hair spray", "spray floke", "gel floke", "wax", "pomade", "mousse", "heat protect"]),
+    ("shampo",      ["shampoo", "shampo"]),
+    # body — generic body cream/lotion last
+    ("scrub",       ["scrub", "peeling trupi", "exfoliat"]),
+    ("dush",        ["shower", "dush", "body wash", "shower gel", "larje trupi", "sapun"]),
+    ("duar_kembe",  ["hand cream", "krem duar", "foot cream", "kujdesi per duart", "kujdesi per kembet", "duart", "kembet"]),
+    ("krem_trupi",  ["body cream", "body lotion", "krem trupi", "locion trupi", "body butter", "body milk", "krem/locion trupi", "kujdesi per trupin"]),
     # make-up
-    "mu_fytyre":   ["foundation", "concealer", "fondatin", "blush", "powder", "pudra", "bb cream",
-                    "cc cream", "cushion", "bronzer", "highlighter", "primer"],
-    "mu_syte":     ["mascara", "eyeliner", "eyeshadow", "eye shadow", "brow", "vetulla", "laps syri"],
-    "mu_buze":     ["lipstick", "lip tint", "lip gloss", "lip liner", "buzekuq", "laps buze"],
-}
+    ("mu_syte",     ["mascara", "eyeliner", "eyeshadow", "eye shadow", "eyebrow", "vetulla", "laps syri"]),
+    ("mu_buze",     ["lipstick", "lip tint", "lip gloss", "lip liner", "buzekuq", "laps buze", "lip stick"]),
+    ("mu_fytyre",   ["foundation", "concealer", "fondatin", "blush", "powder", "pudra", "bb cream",
+                     "cc cream", "cushion", "bronzer", "highlighter", "primer", "contour"]),
+]
 # Product *form* (not purpose — "anti-age"/"spot" live in CONCERN_KW instead, so
 # they don't mislabel a cleanser or serum). Order matters: first match wins.
 TYPE_KW = [
     # sunscreen needs a real sun/UV word — bare "SPF" also appears on makeup cushions
     ("krem_dielli", ["sunscreen", "suncream", "sun cream", "sun stick", "sun serum", "sun fluid",
                      "sun gel", " sun ", "krem dielli", "mbrojtje nga dielli", "uv "]),
-    ("trajtim",     ["acne patch", "pimple patch", "spot patch", "patch akne", "spot treatment",
-                     "spot corrector", "blemish patch", "cica patch"]),
+    # a spot/local treatment is its own form (applied to a spot, not the whole face)
+    ("trajtim",     ["spot treatment", "acne patch", "pimple patch", "spot patch", "spot corrector",
+                     "blemish patch", "blemish spot", "spot cream", "cica patch", "trajtim lokal", "patch akne"]),
     ("maske",       ["sheet mask", "maske", " mask", "sleeping pack", "wash off", "clay mask", "modeling pack"]),
     ("pastrues",    ["cleanser", "cleansing", "pastrues", "lares", "foam", "micellar", "face wash",
                      "makeup remover", "gel larje", "cleansing oil", "cleansing balm"]),
@@ -480,23 +558,57 @@ TYPE_KW = [
 ]
 
 
+# which section a hair/body/make-up subcategory belongs to
+KIND_SECTION = {"vaj_floke": "floket", "maske_floke": "floket", "balsam": "floket",
+                "stilues": "floket", "shampo": "floket", "scrub": "trupi", "dush": "trupi",
+                "duar_kembe": "trupi", "krem_trupi": "trupi",
+                "mu_syte": "makeup", "mu_buze": "makeup", "mu_fytyre": "makeup"}
+
+
 def classify(members):
-    """return (sections, area, type, concerns) for a cluster of store listings"""
-    text = " " + " ".join(fold(m["title"]) for m in members) + " " + \
-           " ".join(c for m in members for c in m.get("cats", [])) + " "
-    sections = [s for s, kws in SECTION_KW.items() if any(k in text for k in kws)]
-    area = None
-    if any(k in text for k in AREA_KW["syte"]):
-        area = "syte"
-    elif any(k in text for k in AREA_KW["buzet"]):
-        area = "buzet"
+    """Classify a product trusting the stores' OWN categories first (the way their
+    pages group it); fall back to the product title only when the stores give
+    nothing. A dimension stays empty if neither source knows it."""
+    cat = " " + " ".join(c for m in members for c in m.get("cats", [])) + " "
+    name = " " + " ".join(fold(m["title"]) for m in members) + " "
+
+    def first(pairs, t):
+        return next((k for k, kws in pairs if any(w in t for w in kws)), None)
+    ptype = first(TYPE_KW, cat) or first(TYPE_KW, name)
+    if ptype and any(w in name for w in MAKEUP_FORMS):
+        ptype = None                          # a BB/CC cushion is make-up, not a skincare type
+    kind = first(KIND_KW, cat) or first(KIND_KW, name)
+    kinds = [kind] if kind else []
+
+    def secs(t):
+        return [s for s, kws in SECTION_KW.items() if any(k in t for k in kws)]
+    sections = secs(cat)
+    from_cats = bool(sections)
+    if not sections:                         # stores said nothing -> infer from title
+        sections = secs(name)
+    if "parfume" in sections and not from_cats and any(w in name for w in PARFUME_EXCLUDE):
+        sections.remove("parfume")
+    if not sections:                         # still nothing: trust the detected subcategory/type
+        if kind:
+            sections = [KIND_SECTION[kind]]
+        elif ptype:
+            sections = ["fytyra"]            # a toner/serum/cream with no other signal is face
+
+    def area_of(t):
+        if any(k in t for k in AREA_KW["syte"]):
+            return "syte"
+        if any(k in t for k in AREA_KW["buzet"]):
+            return "buzet"
+        return None
+    area = area_of(cat) or area_of(name)
     if area and "fytyra" not in sections:      # eye/lip care implies face skincare
         sections.append("fytyra")
     if "fytyra" in sections and area is None:
         area = "lekura"
-    ptype = next((t for t, kws in TYPE_KW if any(k in text for k in kws)), None)
-    concerns = [c for c, kws in CONCERN_KW.items() if any(k in text for k in kws)]
-    kinds = [k for k, kws in KIND_KW.items() if any(w in text for w in kws)]
+
+    def cons(t):
+        return [c for c, kws in CONCERN_KW.items() if any(k in t for k in kws)]
+    concerns = cons(cat) or cons(name)        # KFarma tags concerns; title is fallback
     return sections, area, ptype, concerns, kinds
 
 
@@ -596,13 +708,19 @@ def main():
         sys.exit("No products loaded.")
 
     brand_display = normalize(items)
+    items = dedupe_within_store(items)
     clusters, scores = match(items, load_overrides())
     products = build_products(items, clusters, brand_display)
 
     Path("data").mkdir(exist_ok=True)
     Path("data/products.json").write_text(json.dumps(products, ensure_ascii=False, indent=1), encoding="utf-8")
     write_match_report(items, clusters, scores, "data/matches.csv")
-    updated = datetime.now(timezone.utc).isoformat(timespec="minutes")
+    # "updated" = when the feeds were actually fetched (newest raw file), not now,
+    # so an offline rebuild never claims the prices are fresher than they are.
+    raw_mtimes = [(raw_dir / f"{s['id']}.json").stat().st_mtime
+                  for s in stores if (raw_dir / f"{s['id']}.json").exists()]
+    fetched = max(raw_mtimes) if raw_mtimes else datetime.now(timezone.utc).timestamp()
+    updated = datetime.fromtimestamp(fetched, timezone.utc).isoformat(timespec="minutes")
     n_pages = build_site(products, stores, updated, Path(args.out))
 
     multi = sum(1 for p in products if len(p["offers"]) > 1)
