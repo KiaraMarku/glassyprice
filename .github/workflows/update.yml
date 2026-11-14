@@ -3,8 +3,11 @@
 name: update-prices
 
 on:
+  push:
+    branches: [master]      # deploy on every push to master
   schedule:
     - cron: "17 5 * * *"   # 05:17 UTC daily (07:17 Tirana summer time)
+    - cron: "17 17 * * *"  # 17:17 UTC daily (19:17 Tirana) — twice daily per the plan
   workflow_dispatch:        # "Run workflow" button for manual refresh
 
 permissions:
