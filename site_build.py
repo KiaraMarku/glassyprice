@@ -662,12 +662,12 @@ function landing(){
     '<input name="q" type="search" placeholder="Kërko produkt ose markë (p.sh. cosrx snail)">'+
     '<svg class="mag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg>'+
     '<button class="btn" type="submit">Kërko</button></form></div></section>'+
-    '<div class="sec"><h2>Blej sipas kategorisë</h2></div><div class="cats">'+catCircles+'</div>'+
+    '<div class="sec"><h2>Kategoritë</h2></div><div class="cats">'+catCircles+'</div>'+
     '<div class="sec"><h2>Zbritjet më të mëdha</h2><a class="more" href="oferta.html">Të gjitha ofertat →</a></div>'+
     '<div class="grid">'+drops.map(card).join('')+'</div>'+
     '<div class="sec"><h2>Bestsellers</h2><a class="more" href="bestsellers.html">Shiko të gjitha →</a></div>'+
     '<div class="grid">'+best.map(card).join('')+'</div>'+
-    '<div class="sec"><h2>Blej sipas problemit</h2></div><div class="cats">'+conCircles+'</div>';
+    '<div class="sec"><h2>Sipas problemit të lëkurës</h2></div><div class="cats">'+conCircles+'</div>';
   attachLiveSearch(document.querySelector('.hero .search'), document.querySelector('.hero .search input'));
 }
 

@@ -255,5 +255,20 @@ class TestSizeFamilies(unittest.TestCase):
         self.assertEqual(len(out), 2)   # same size -> never two "sizes" of one card
 
 
+class TestClassify(unittest.TestCase):
+    def it(self, title, cats):
+        return {"title": title, "cats": [kb.fold(c) for c in cats]}
+
+    def test_sun_mist_is_not_perfume(self):
+        # REAL: KFarma tags for Skin Aqua UV Mist ("Mist" + "Trupi" once read as "mist trupi")
+        secs = kb.classify([self.it("Rohto Mentholatum - Skin Aqua Super Moisture UV Mist SPF 50+ PA++++",
+                                    ["Fytyra", "Krem dielli", "Krem dielli për trup", "Mist", "Trupi"])])[0]
+        self.assertNotIn("parfume", secs)
+
+    def test_body_mist_is_perfume_but_perfumed_wash_is_not(self):
+        self.assertIn("parfume", kb.classify([self.it("Amande Turkish Rose Body Mist", ["Trupi"])])[0])
+        self.assertNotIn("parfume", kb.classify([self.it("NARD Perfumed Body Wash White Musk", ["Trupi"])])[0])
+
+
 if __name__ == "__main__":
     unittest.main()

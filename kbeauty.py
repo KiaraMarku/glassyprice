@@ -585,6 +585,9 @@ PARFUME_EXCLUDE = ["shampoo", "shampo", "conditioner", "kondicioner", "balsam", 
                    "maske", "scrub", "essence", "esence", "toner", "tonik", "lares",
                    "oil", "vaj", "deodorant", "stick", "powder", "pudra", "foam", "treatment",
                    "wash", "shower", "dush", "shampoo"]
+SUN_WORDS = [" spf", " uv ", " sun ", "sunscreen", "dielli", "suncare"]
+FRAGRANCE_NAME = ["body mist", "body spray", "perfume mist", "fragrance mist", "fragranced body mist",
+                  "eau de parfum", "eau de toilette", "eau de cologne", "hair perfume", "hair parfume"]
 # Within Fytyra: skin / eyes / lips. Only skincare eye & lip *care* (not makeup).
 AREA_KW = {
     "syte":  ["eye cream", "eye serum", "eye patch", "under-eye", "under eye", "eye mask",
@@ -659,7 +662,8 @@ def classify(members):
     """Classify a product trusting the stores' OWN categories first (the way their
     pages group it); fall back to the product title only when the stores give
     nothing. A dimension stays empty if neither source knows it."""
-    cat = " " + " ".join(c for m in members for c in m.get("cats", [])) + " "
+    # " | " between categories: "Mist" + "Trupi" must not read as the phrase "mist trupi"
+    cat = " " + " | ".join(c for m in members for c in m.get("cats", [])) + " "
     name = " " + " ".join(fold(m["title"]) for m in members) + " "
 
     def first(pairs, t):
@@ -678,6 +682,14 @@ def classify(members):
         sections = secs(name)
     if "parfume" in sections and not from_cats and any(w in name for w in PARFUME_EXCLUDE):
         sections.remove("parfume")
+    # a fragrance named as such (body mist/spray, perfume) belongs in Parfume even when
+    # the store filed it under body; sunscreen mists/sprays never do
+    is_sun = any(w in name for w in SUN_WORDS)
+    if is_sun and "parfume" in sections:
+        sections.remove("parfume")
+    elif ("parfume" not in sections and not is_sun and any(w in name for w in FRAGRANCE_NAME)
+          and not any(w in name for w in PARFUME_EXCLUDE + ["acne", "scrub", "serum"])):
+        sections.append("parfume")
     if not sections:                         # still nothing: trust the detected subcategory/type
         if kind:
             sections = [KIND_SECTION[kind]]
