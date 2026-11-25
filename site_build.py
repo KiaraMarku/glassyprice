@@ -106,6 +106,21 @@ a:hover{text-decoration:underline}
 .ac .p{margin-left:auto;font-weight:700;white-space:nowrap;font-size:13px;font-variant-numeric:tabular-nums}
 .ac .all{padding:11px 13px;font-size:13px;color:var(--accent);font-weight:600;border-top:1px solid var(--line)}
 .ac .no{padding:14px 13px;color:var(--muted);font-size:13px}
+/* phone header: row 1 = logo + search, row 2 = one swipeable line of links */
+@media(max-width:760px){
+  .nav-in{padding:10px 14px 0;gap:10px 12px;flex-wrap:wrap}
+  .logo{font-size:20px;gap:7px}
+  .logo-icon{width:26px;height:26px}
+  .nav-search{order:2;flex:1 1 0;width:auto;max-width:none;min-width:0}
+  .nav-search input{font-size:16px;padding:7px 12px 7px 34px}   /* 16px stops iOS zoom-on-focus */
+  .nav-search .mag{left:12px;width:15px;height:15px}
+  .nav-links{order:3;flex:0 0 calc(100% + 28px);margin:0 -14px;padding:2px 14px 9px;
+    justify-content:flex-start;flex-wrap:nowrap;gap:20px;overflow-x:auto;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .nav-links::-webkit-scrollbar{display:none}
+  .nav-links a{font-size:15px}
+  .ac{position:fixed;top:56px;left:10px;right:10px}
+}
 
 /* hero — full-bleed gradient entrance */
 .hero{position:relative;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);margin-top:-20px;min-height:78vh;overflow:hidden;
@@ -529,7 +544,9 @@ function landing(){
 
   app.innerHTML =
     '<section class="hero">'+heroDecoHTML()+
-    '<img class="hero-face" src="assets/hero-face.png" alt="">'+'<div class="hero-in">'+
+    /* hero face hidden for now; to restore add back:
+       '<img class="hero-face" src="assets/hero-face.png" alt="">'+ */
+    '<div class="hero-in">'+
     '<a class="hero-logo" href="index.html"><img class="hero-logo-img" src="assets/logo-icon.png" alt="glassyprice"></a>'+
     '<h1>Çmime <em>transparente</em><br>për një lëkurë <em>transparente</em>.</h1>'+
     '<p>Krahaso çmimin dhe gjendjen e çdo produkti K-beauty në '+Object.keys(S).length+

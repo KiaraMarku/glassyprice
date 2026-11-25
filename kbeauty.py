@@ -282,7 +282,10 @@ def parse_shopify(store, prods):
             price = to_number(v.get("price"))
             cmp_at = to_number(v.get("compare_at_price"))
             avail = bool(v.get("available"))
-            img = (v.get("featured_image") or {}).get("src") or prod_img
+            # Single-variant products: always the product's main image. Stores
+            # (KFarma) often attach a promo/secondary image as the variant image.
+            # Multi-variant: the variant image shows that shade/size, keep it.
+            img = ((v.get("featured_image") or {}).get("src") if multi else None) or prod_img
             g = groups.get(vol)
             if g is None:
                 groups[vol] = {"vid": v.get("id"), "img": img, "price": price,
