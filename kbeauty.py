@@ -587,7 +587,8 @@ PARFUME_EXCLUDE = ["shampoo", "shampo", "conditioner", "kondicioner", "balsam", 
                    "wash", "shower", "dush", "shampoo"]
 SUN_WORDS = [" spf", " uv ", " sun ", "sunscreen", "dielli", "suncare"]
 FRAGRANCE_NAME = ["body mist", "body spray", "perfume mist", "fragrance mist", "fragranced body mist",
-                  "eau de parfum", "eau de toilette", "eau de cologne", "hair perfume", "hair parfume"]
+                  "eau de parfum", "eau de toilette", "eau de cologne", "hair perfume", "hair parfume",
+                  "perfume balm", "solid perfume"]
 # Within Fytyra: skin / eyes / lips. Only skincare eye & lip *care* (not makeup).
 AREA_KW = {
     "syte":  ["eye cream", "eye serum", "eye patch", "under-eye", "under eye", "eye mask",
