@@ -1,4 +1,6 @@
 {
+  "_help_disabled_stores": "Store ids to remove from the site (not fetched, not shown): kfarma, beautene, koral, glowyskin. Example: [\"koral\"]",
+  "disabled_stores": [],
   "force": [],
   "block": []
 }

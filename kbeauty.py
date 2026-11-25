@@ -841,6 +841,14 @@ def main():
     if args.stores:
         wanted = set(args.stores.split(","))
         stores = [s for s in STORES if s["id"] in wanted]
+    # a shop that asked to be removed: not fetched, not shown anywhere (data/overrides.json)
+    disabled = set(load_overrides().get("disabled_stores", []))
+    unknown = disabled - {s["id"] for s in STORES}
+    if unknown:
+        print(f"  WARNING: unknown store id(s) in disabled_stores: {sorted(unknown)}", file=sys.stderr)
+    if disabled & {s["id"] for s in stores}:
+        print(f"  Disabled (overrides.json): {', '.join(s['name'] for s in stores if s['id'] in disabled)}")
+        stores = [s for s in stores if s["id"] not in disabled]
     raw_dir = Path("data/raw")
     raw_dir.mkdir(parents=True, exist_ok=True)
 

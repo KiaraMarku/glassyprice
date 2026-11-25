@@ -120,7 +120,8 @@ a:hover{text-decoration:underline}
   .nav-in{padding:8px 10px 8px 14px;gap:0;flex-wrap:wrap}
   .logo{font-size:20px;gap:7px}
   .logo-icon{width:26px;height:26px}
-  .nav-btns{display:flex;gap:2px;margin-left:auto;order:1}
+  .nav-in .nav-fav{order:1;margin-left:auto}     /* beats the later base .nav-fav rule */
+  .nav-btns{display:flex;gap:2px;order:1}
   .nav-links{display:none;order:3;flex:0 0 100%;flex-direction:column;gap:0;padding:6px 0 2px}
   .nav.menu-open .nav-links{display:flex}
   .nav-links a{font-size:18px;padding:13px 4px;border-top:1px solid var(--line)}
@@ -280,6 +281,23 @@ select.chip{appearance:none}
   align-items:flex-start;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
 .slides::-webkit-scrollbar{display:none}
 .slide{flex:0 0 100%;min-width:0;scroll-snap-align:start}
+/* favorites (heart) */
+.card{position:relative}
+.card .top{padding-right:30px}
+.fav{position:absolute;top:10px;right:10px;width:34px;height:34px;border:none;border-radius:50%;
+  background:transparent;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.fav svg{width:20px;height:20px}
+.fav:hover{color:var(--accent)}
+.fav.on{color:var(--accent)}
+.fav.on svg path{fill:currentColor}
+.fav.inline{position:static;display:inline-flex;vertical-align:middle;margin-left:4px;background:var(--accent-soft)}
+.nav-fav{order:5;position:relative;display:flex;align-items:center;justify-content:center;width:40px;height:40px;
+  border-radius:12px;color:var(--ink);flex:none}
+.nav-fav:hover{color:var(--accent);text-decoration:none}
+.nav-fav svg{width:22px;height:22px}
+.fav-count{position:absolute;top:3px;right:1px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;
+  background:var(--accent);color:#fff;font-size:10.5px;font-weight:700;line-height:17px;text-align:center}
+.fav-count:empty{display:none}
 .empty{grid-column:1/-1;text-align:center;color:var(--muted);padding:48px 0}
 
 /* product detail */
@@ -458,10 +476,36 @@ function badges(p){
   if(p._any) b+='<span class="badge stock">Në gjendje</span>';
   return b?'<div class="badges">'+b+'</div>':'';
 }
+// ---- favorites: kept for this visit only (sessionStorage), keyed by brand+name so a rebuild can't mix them up
+var HEART = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.6a4.3 4.3 0 0 1 7.5 2.7c0 5.6-7.5 10.2-7.5 10.2z"/></svg>';
+var FAV = (function(){try{return JSON.parse(sessionStorage.getItem('gp-fav')||'[]');}catch(e){return [];}})();
+var ON_FAV_PAGE = false;
+function favKey(p){return slug(p.brand+' '+p.name);}
+function isFav(p){return FAV.indexOf(favKey(p))>=0;}
+function favSave(){try{sessionStorage.setItem('gp-fav',JSON.stringify(FAV));}catch(e){} favCount();}
+function favCount(){var c=document.querySelector('.fav-count'); if(c) c.textContent = FAV.length||'';}
+function favBtn(p, inline){
+  var on = isFav(p);
+  return '<button type="button" class="fav'+(inline?' inline':'')+(on?' on':'')+'" data-fav="'+p.i+'" aria-pressed="'+on+
+    '" aria-label="Ruaj te të preferuarat" title="Ruaj te të preferuarat">'+HEART+'</button>';
+}
+document.addEventListener('click',function(e){
+  var b = e.target.closest && e.target.closest('.fav'); if(!b) return;
+  e.preventDefault();
+  var p = GP.products[+b.getAttribute('data-fav')]; if(!p) return;
+  var k = favKey(p), at = FAV.indexOf(k);
+  if(at>=0) FAV.splice(at,1); else FAV.push(k);
+  favSave();
+  var on = at<0;
+  document.querySelectorAll('.fav[data-fav="'+p.i+'"]').forEach(function(x){
+    x.classList.toggle('on',on); x.setAttribute('aria-pressed',on);});
+  if(ON_FAV_PAGE && !on) favorites();      // removed on the favorites page -> refresh the list
+});
+
 function card(p){
   var img = p.image?'<img class="pimg" loading="lazy" src="'+esc(p.image)+'" alt="">':'<img class="pimg" alt="">';
   var href = 'produkt.html?p='+p.i;
-  return '<article class="card" data-p="'+p.i+'"><div class="top"><a class="img" href="'+href+'">'+img+'</a><div>'+
+  return '<article class="card" data-p="'+p.i+'">'+favBtn(p)+'<div class="top"><a class="img" href="'+href+'">'+img+'</a><div>'+
     '<div class="brand">'+esc(p.brand)+'</div><div class="name"><a href="'+href+'">'+esc(p.name)+'</a></div>'+
     (p.volume&&p._sizes.length<2?'<div class="vol">'+esc(volfmt(p.volume))+'</div>':'')+badges(p)+'</div></div>'+
     sizesHTML(p)+'</article>';
@@ -640,14 +684,12 @@ function product(){
   app.innerHTML =
     '<a class="back" href="javascript:history.length>1?history.back():location.href=\'index.html\'">← Kthehu</a>'+
     '<div class="detail" data-p="'+p.i+'"><div>'+(p.image?'<img class="hero-img pimg" src="'+esc(p.image)+'" alt="">':'')+'</div>'+
-    '<div><div class="brand">'+esc(p.brand)+'</div><h1>'+esc(p.name)+'</h1>'+
+    '<div><div class="brand">'+esc(p.brand)+'</div><h1>'+esc(p.name)+' '+favBtn(p,true)+'</h1>'+
     (p.volume&&p._sizes.length<2?'<div class="vol">'+esc(volfmt(p.volume))+'</div>':'')+
     sizesHTML(p, save)+
     (chips?'<div class="facets" style="margin-top:18px">'+chips+'</div>':'')+
     '<p class="lead" style="margin-top:18px">Çmimet u kontrolluan së fundmi në kohën te fund i faqes. '+
-    'Kliko dyqanin për të konfirmuar çmimin para blerjes.<br>'+
-    '<a href="mailto:hello@getglassyprice.com?subject='+encodeURIComponent('Çmim i gabuar: '+p.name)+
-    '">Raporto një çmim të gabuar</a></p></div></div>';
+    'Kliko dyqanin për të konfirmuar çmimin para blerjes.</p></div></div>';
   initSlides(app);
 }
 
@@ -694,6 +736,7 @@ document.getElementById('nav').className='nav';
 document.getElementById('nav').innerHTML =
   '<div class="nav-in"><a class="logo" href="index.html">'+
   '<img class="logo-icon" src="assets/logo-icon.png" alt="">'+wordmark()+'</a>'+
+  '<a class="nav-fav" href="te-preferuarat.html" aria-label="Të preferuarat" title="Të preferuarat">'+HEART+'<span class="fav-count"></span></a>'+
   '<div class="nav-btns">'+
   '<button type="button" class="nb" data-open="search-open" aria-label="Kërko" aria-expanded="false">'+
   '<svg class="ic-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg>'+
@@ -714,6 +757,7 @@ document.querySelectorAll('.nav-links a').forEach(function(a){
   if(a.getAttribute('href')===here) a.className='active';
 });
 attachLiveSearch(document.querySelector('.nav-search'), document.querySelector('.nav-search input'));
+favCount();
 // phone: search / menu buttons toggle one panel at a time
 (function(){
   var nav=document.getElementById('nav'), btns=nav.querySelectorAll('.nb');
@@ -734,7 +778,19 @@ document.getElementById('foot').innerHTML =
   'Kontrolloni çmimin në dyqan para blerjes.<br>'+
   'Përditësuar: '+when.toLocaleString('sq-AL',{dateStyle:'medium',timeStyle:'short'})+'</div>';
 
-window.gp = {collection:collection, landing:landing, product:product, brands:brands, search:search};
+function favorites(){
+  ON_FAV_PAGE = true;
+  var app = document.getElementById('app');
+  if(!GP.products.some(isFav)){
+    app.innerHTML = '<div class="sec"><h2>Të preferuarat</h2></div>'+
+      '<p class="lead">Ende asnjë produkt. Shtyp '+HEART.replace('<svg','<svg style="width:16px;height:16px;vertical-align:-3px"')+
+      ' te një produkt për ta ruajtur këtu gjatë kësaj vizite.</p><p><a href="index.html">← Shiko produktet</a></p>';
+    return;
+  }
+  collection({heading:'Të preferuarat', lead:'Produktet që ruajte gjatë kësaj vizite. Fshihen kur mbyll faqen.',
+    filter:isFav, facets:[]});
+}
+window.gp = {collection:collection, landing:landing, product:product, brands:brands, search:search, favorites:favorites};
 })();
 """
 
@@ -824,6 +880,7 @@ def build_site(products, stores, updated, out_dir):
         "marka.html": ("Markat · Glassyprice", "Të gjitha markat K-beauty.", "gp.brands();"),
         "produkt.html": ("Produkt · Glassyprice", "Krahaso çmimet për këtë produkt.", "gp.product();"),
         "kerko.html": ("Kërko · Glassyprice", "Kërko produkte K-beauty.", "gp.search();"),
+        "te-preferuarat.html": ("Të preferuarat · Glassyprice", "Produktet që ruajte.", "gp.favorites();"),
     }
     for key, label in SECTIONS.items():
         pages[f"{key}.html"] = (f"{label} · Glassyprice", f"Produkte K-beauty: {label}.",

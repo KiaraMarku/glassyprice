@@ -77,3 +77,13 @@ Manual fixes go in `data/overrides.json`, using product URLs:
 ## Being a good citizen
 
 The script waits 1 second between requests and identifies itself in the User-Agent. Read each store's terms before publishing the site. The stronger long-term move is to tell the stores about it: you send them buyers, and they may give you a proper feed.
+
+## Removing a shop (if a shop asks)
+
+Edit `data/overrides.json` (works from the GitHub website, even on a phone) and put the shop's id in `disabled_stores`:
+
+```json
+"disabled_stores": ["koral"]
+```
+
+Ids: `kfarma`, `beautene`, `koral`, `glowyskin`. Commit to `master`: the site rebuilds in a few minutes without that shop, and its data is no longer fetched at all. Remove the id to bring the shop back.
