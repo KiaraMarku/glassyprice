@@ -677,6 +677,9 @@ def classify(members):
     if ptype == "hidratues" and any(w in name for w in dict(TYPE_KW)["serum"]) \
             and not any(w in name for w in CREAM_WORDS):
         ptype = "serum"
+    # ...and the reverse: "Vitamin E Booster Cream" is a cream, not a serum
+    elif ptype == "serum" and any(w in name for w in (" cream ", " krem ", "gel cream", "gel-cream")):
+        ptype = "hidratues"
     if ptype and any(w in name for w in MAKEUP_FORMS):
         ptype = None                          # a BB/CC cushion is make-up, not a skincare type
     kind = first(KIND_KW, cat) or first(KIND_KW, name)
