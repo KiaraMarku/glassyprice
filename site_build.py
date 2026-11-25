@@ -298,7 +298,6 @@ select.chip{appearance:none}
 footer{border-top:1px solid var(--line);background:var(--card)}
 .foot-in{max-width:1080px;margin:auto;padding:22px 16px 34px;color:var(--muted);font-size:13px}
 .foot-in a{color:var(--accent)}
-.foot-in .tag-line{font-family:Fraunces,Georgia,serif;font-size:16px;color:var(--ink);margin-bottom:8px}
 """
 
 JS = r"""(function(){
@@ -612,7 +611,7 @@ function landing(){
        '<img class="hero-face" src="assets/hero-face.png" alt="">'+ */
     '<div class="hero-in">'+
     '<a class="hero-logo" href="index.html"><img class="hero-logo-img" src="assets/logo-icon.png" alt="glassyprice"></a>'+
-    '<h1>Çmime <em>transparente</em><br>për një lëkurë <em>transparente</em>.</h1>'+
+    '<h1>Çmime <em>transparente</em><br>për një lëkurë <em>transparente</em></h1>'+
     '<p>Krahaso çmimin dhe gjendjen e çdo produkti K-beauty në '+Object.keys(S).length+
     ' dyqanet shqiptare, në një faqe të vetme.</p>'+
     '<form class="search" onsubmit="location.href=\'kerko.html?q=\'+encodeURIComponent(this.q.value);return false;">'+
@@ -730,11 +729,10 @@ attachLiveSearch(document.querySelector('.nav-search'), document.querySelector('
 
 var when = new Date(GP.updated);
 document.getElementById('foot').innerHTML =
-  '<div class="foot-in"><div class="tag-line">Çmime transparente për lëkurë si xhami.</div>'+
+  '<div class="foot-in">'+
   'Çmimet merren automatikisht nga faqet e dyqaneve dhe mund të ndryshojnë. '+
   'Kontrolloni çmimin në dyqan para blerjes.<br>'+
-  'Përditësuar: '+when.toLocaleString('sq-AL',{dateStyle:'medium',timeStyle:'short'})+
-  ' · Pa reklama të fshehura, pa renditje sponsor të pashënuara.</div>';
+  'Përditësuar: '+when.toLocaleString('sq-AL',{dateStyle:'medium',timeStyle:'short'})+'</div>';
 
 window.gp = {collection:collection, landing:landing, product:product, brands:brands, search:search};
 })();
