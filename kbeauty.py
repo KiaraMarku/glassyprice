@@ -635,6 +635,8 @@ KIND_KW = [
 ]
 # Product *form* (not purpose — "anti-age"/"spot" live in CONCERN_KW instead, so
 # they don't mislabel a cleanser or serum). Order matters: first match wins.
+CREAM_WORDS = [" cream", "krem", "lotion", "locion", "balm", "balsam", "emulsion", "moistur",
+               "gel cream", "mask", "masque", "maske"]
 TYPE_KW = [
     # sunscreen needs a real sun/UV word — bare "SPF" also appears on makeup cushions
     ("krem_dielli", ["sunscreen", "suncream", "sun cream", "sun stick", "sun serum", "sun fluid",
@@ -670,6 +672,11 @@ def classify(members):
     def first(pairs, t):
         return next((k for k, kws in pairs if any(w in t for w in kws)), None)
     ptype = first(TYPE_KW, cat) or first(TYPE_KW, name)
+    # Stores file some serums under "Hidratues"/"Spot Krem" (Celimax Retinal Shot Booster).
+    # If the name says serum/booster/ampoule and nothing cream-like, the name wins.
+    if ptype == "hidratues" and any(w in name for w in dict(TYPE_KW)["serum"]) \
+            and not any(w in name for w in CREAM_WORDS):
+        ptype = "serum"
     if ptype and any(w in name for w in MAKEUP_FORMS):
         ptype = None                          # a BB/CC cushion is make-up, not a skincare type
     kind = first(KIND_KW, cat) or first(KIND_KW, name)

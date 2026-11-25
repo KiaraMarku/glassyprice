@@ -265,6 +265,14 @@ class TestClassify(unittest.TestCase):
                                     ["Fytyra", "Krem dielli", "Krem dielli për trup", "Mist", "Trupi"])])[0]
         self.assertNotIn("parfume", secs)
 
+    def test_booster_filed_as_moisturizer_is_serum(self):
+        # REAL: Beautene files it under "Hidratues", KFarma tags it "Spot Krem"
+        m = [self.it("Celimax The Vita-A Retinal Shot Tightening Booster 15ml",
+                     ["Bestseller", "Fytyra", "Rrudha", "Spot Krem", "Zona rreth syve", "Hidratues"])]
+        self.assertEqual(kb.classify(m)[2], "serum")
+        cream = [self.it("Clara's Deep Softening Vitamin E Booster Cream 50ml", ["Hidratues"])]
+        self.assertEqual(kb.classify(cream)[2], "hidratues")
+
     def test_body_mist_is_perfume_but_perfumed_wash_is_not(self):
         self.assertIn("parfume", kb.classify([self.it("Amande Turkish Rose Body Mist", ["Trupi"])])[0])
         self.assertNotIn("parfume", kb.classify([self.it("NARD Perfumed Body Wash White Musk", ["Trupi"])])[0])
