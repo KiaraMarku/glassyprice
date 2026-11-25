@@ -240,7 +240,8 @@ select.chip{appearance:none}
 .count{color:var(--muted);font-size:13px;margin-left:auto}
 
 /* product grid + cards */
-.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(min(280px,100%),1fr))}
+.grid>*{min-width:0}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;
   display:flex;flex-direction:column;gap:11px;box-shadow:var(--shadow)}
 .card:hover{border-color:var(--accent)}
@@ -270,10 +271,20 @@ select.chip{appearance:none}
 .was{color:var(--muted);text-decoration:line-through;font-size:12px;margin-right:5px;font-weight:400}
 .price.sale{color:var(--accent)}
 .more-btn{grid-column:1/-1;justify-self:center;margin-top:8px}
+/* sizes: chips + one swipeable slide of store prices per size */
+.szs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}
+.sz{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:5px 12px;font:inherit;
+  font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;line-height:1.2}
+.sz.on{background:var(--accent-soft);border-color:var(--pink);color:var(--accent)}
+.slides{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;
+  align-items:flex-start;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+.slides::-webkit-scrollbar{display:none}
+.slide{flex:0 0 100%;min-width:0;scroll-snap-align:start}
 .empty{grid-column:1/-1;text-align:center;color:var(--muted);padding:48px 0}
 
 /* product detail */
-.detail{display:grid;gap:26px;grid-template-columns:1fr;max-width:720px}
+.detail{display:grid;gap:26px;grid-template-columns:minmax(0,1fr);max-width:720px}
+.detail>div{min-width:0}
 .detail .hero-img{width:100%;max-width:300px;aspect-ratio:1;object-fit:cover;border-radius:18px;
   background:var(--line);box-shadow:var(--shadow)}
 .detail h1{font-size:28px;margin:8px 0 4px}
@@ -343,17 +354,62 @@ function slug(s){return fold(s).replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 function qp(k){return new URLSearchParams(location.search).get(k);}
 function wordmark(){return '<span class="w"><b>glassy</b><i>price</i></span>';}
 
+function sizeStats(s){
+  var ins = s.offers.filter(function(o){return o.in_stock&&o.price!=null;});
+  s._min = ins.length?Math.min.apply(null,ins.map(function(o){return o.price;})):Infinity;
+  s._max = ins.length?Math.max.apply(null,ins.map(function(o){return o.price;})):0;
+  s._save = ins.length>1?s._max-s._min:0;
+  s._any = ins.length>0;
+}
 GP.products.forEach(function(p){
-  var ins = p.offers.filter(function(o){return o.in_stock&&o.price!=null;});
-  p._min = ins.length?Math.min.apply(null,ins.map(function(o){return o.price;})):Infinity;
-  p._max = ins.length?Math.max.apply(null,ins.map(function(o){return o.price;})):0;
-  p._save = ins.length>1?p._max-p._min:0;
-  p._any = ins.length>0;
+  // every product has _sizes; single-size products get a one-element list
+  p._sizes = p.sizes || [{volume:p.volume, offers:p.offers, image:p.image}];
+  p._d = p.dsize||0;
+  p._sizes.forEach(sizeStats);
+  var d = p._sizes[p._d];
+  p._min=d._min; p._max=d._max; p._save=d._save;
+  p._any = p._sizes.some(function(s){return s._any;});
   p._disc = 0;
-  p.offers.forEach(function(o){if(o.compare_at&&o.price){
-    p._disc=Math.max(p._disc,Math.round((1-o.price/o.compare_at)*100));}});
-  p._hay = fold([p.brand,p.name,p.volume,(p.sections||[]).join(' '),(p.concerns||[]).join(' ')].join(' '));
+  p._sizes.forEach(function(s){s.offers.forEach(function(o){if(o.compare_at&&o.price){
+    p._disc=Math.max(p._disc,Math.round((1-o.price/o.compare_at)*100));}});});
+  p._hay = fold([p.brand,p.name,p._sizes.map(function(s){return s.volume;}).join(' '),
+    (p.sections||[]).join(' '),(p.concerns||[]).join(' ')].join(' '));
 });
+function sizeOffers(s){
+  return s.offers.map(function(o){return offerHTML(o, o.in_stock&&o.price===s._min&&s.offers.length>1);}).join('');
+}
+// chips + slides; extra(s) adds per-size content under the offers (detail page)
+function sizesHTML(p, extra){
+  extra = extra||function(){return '';};
+  if(p._sizes.length<2) return '<div class="offers">'+sizeOffers(p._sizes[0])+'</div>'+extra(p._sizes[0]);
+  return '<div class="szs">'+p._sizes.map(function(s,k){
+      return '<button type="button" class="sz'+(k===p._d?' on':'')+'" data-k="'+k+'">'+esc(volfmt(s.volume))+'</button>';
+    }).join('')+'</div>'+
+    '<div class="slides" data-d="'+p._d+'">'+p._sizes.map(function(s){
+      return '<div class="slide"><div class="offers">'+sizeOffers(s)+'</div>'+extra(s)+'</div>';}).join('')+'</div>';
+}
+function setSize(root, k){
+  var p = GP.products[+root.getAttribute('data-p')]; if(!p||!p._sizes[k]) return;
+  root.querySelectorAll('.sz').forEach(function(b){b.classList.toggle('on', +b.getAttribute('data-k')===k);});
+  var img = root.querySelector('img.pimg'), src = p._sizes[k].image;
+  if(img && src && img.getAttribute('src')!==src) img.setAttribute('src', src);
+}
+// open each slider on its default size, without animation
+function initSlides(scope){
+  (scope||document).querySelectorAll('.slides').forEach(function(sl){
+    var d=+sl.getAttribute('data-d'); if(d) sl.scrollLeft = d*sl.clientWidth;
+  });
+}
+document.addEventListener('click',function(e){
+  var b = e.target.closest && e.target.closest('.sz'); if(!b) return;
+  var root = b.closest('[data-p]'), sl = root.querySelector('.slides'), k = +b.getAttribute('data-k');
+  sl.scrollTo({left:k*sl.clientWidth, behavior:'smooth'});
+  setSize(root, k);
+});
+document.addEventListener('scroll',function(e){
+  var sl = e.target; if(!sl.classList || !sl.classList.contains('slides')) return;
+  setSize(sl.closest('[data-p]'), Math.round(sl.scrollLeft/sl.clientWidth));
+}, true);
 
 function offerHTML(o,best){
   var was = o.compare_at?'<span class="was">'+fmt(o.compare_at)+'</span>':'';
@@ -404,14 +460,12 @@ function badges(p){
   return b?'<div class="badges">'+b+'</div>':'';
 }
 function card(p){
-  var offers = p.offers.map(function(o){
-    return offerHTML(o, o.in_stock&&o.price===p._min&&p.offers.length>1);}).join('');
-  var img = p.image?'<img loading="lazy" src="'+esc(p.image)+'" alt="">':'<img alt="">';
+  var img = p.image?'<img class="pimg" loading="lazy" src="'+esc(p.image)+'" alt="">':'<img class="pimg" alt="">';
   var href = 'produkt.html?p='+p.i;
-  return '<article class="card"><div class="top"><a class="img" href="'+href+'">'+img+'</a><div>'+
+  return '<article class="card" data-p="'+p.i+'"><div class="top"><a class="img" href="'+href+'">'+img+'</a><div>'+
     '<div class="brand">'+esc(p.brand)+'</div><div class="name"><a href="'+href+'">'+esc(p.name)+'</a></div>'+
-    (p.volume?'<div class="vol">'+esc(volfmt(p.volume))+'</div>':'')+badges(p)+'</div></div>'+
-    '<div class="offers">'+offers+'</div></article>';
+    (p.volume&&p._sizes.length<2?'<div class="vol">'+esc(volfmt(p.volume))+'</div>':'')+badges(p)+'</div></div>'+
+    sizesHTML(p)+'</article>';
 }
 
 function grid(list, mount, shown){
@@ -421,6 +475,7 @@ function grid(list, mount, shown){
   if(list.length>shown) html += '<button class="chip more-btn" id="more">Shfaq më shumë ('+(list.length-shown)+')</button>';
   html += '</div>';
   mount.innerHTML = html;
+  initSlides(mount);
   var m = document.getElementById('more');
   if(m) m.onclick = function(){grid(list,mount,shown+PAGE);};
 }
@@ -578,24 +633,23 @@ function product(){
   var app = document.getElementById('app');
   var p = GP.products[parseInt(qp('p'),10)];
   if(!p){app.innerHTML='<p class="empty">Produkti nuk u gjet. <a href="index.html">Kthehu në ballinë</a></p>';return;}
-  var offers = p.offers.map(function(o){
-    return offerHTML(o, o.in_stock&&o.price===p._min&&p.offers.length>1);}).join('');
   var chips = (p.sections||[]).map(function(k){return '<a class="chip" href="'+k+'.html">'+icon(k)+esc(SEC[k]||k)+'</a>';})
     .concat(p.type?['<a class="chip" href="kerko.html?q='+encodeURIComponent(TYP[p.type]||p.type)+'">'+icon(p.type)+esc(TYP[p.type])+'</a>']:[])
     .concat((p.concerns||[]).map(function(k){return '<a class="chip" href="problema-'+k+'.html">'+icon(k)+esc(CON[k]||k)+'</a>';})).join(' ');
-  var save = p._save>0?'<span class="save">Kurse deri në '+fmt(p._save)+' duke blerë te më i liri</span>':'';
+  var save = function(s){return s._save>0?'<span class="save">Kurse deri në '+fmt(s._save)+' duke blerë te më i liri</span>':'';};
   document.title = p.name+' · Glassyprice';
   app.innerHTML =
     '<a class="back" href="javascript:history.length>1?history.back():location.href=\'index.html\'">← Kthehu</a>'+
-    '<div class="detail"><div>'+(p.image?'<img class="hero-img" src="'+esc(p.image)+'" alt="">':'')+'</div>'+
+    '<div class="detail" data-p="'+p.i+'"><div>'+(p.image?'<img class="hero-img pimg" src="'+esc(p.image)+'" alt="">':'')+'</div>'+
     '<div><div class="brand">'+esc(p.brand)+'</div><h1>'+esc(p.name)+'</h1>'+
-    (p.volume?'<div class="vol">'+esc(volfmt(p.volume))+'</div>':'')+
-    '<div class="offers">'+offers+'</div>'+save+
+    (p.volume&&p._sizes.length<2?'<div class="vol">'+esc(volfmt(p.volume))+'</div>':'')+
+    sizesHTML(p, save)+
     (chips?'<div class="facets" style="margin-top:18px">'+chips+'</div>':'')+
     '<p class="lead" style="margin-top:18px">Çmimet u kontrolluan së fundmi në kohën te fund i faqes. '+
     'Kliko dyqanin për të konfirmuar çmimin para blerjes.<br>'+
     '<a href="mailto:hello@getglassyprice.com?subject='+encodeURIComponent('Çmim i gabuar: '+p.name)+
     '">Raporto një çmim të gabuar</a></p></div></div>';
+  initSlides(app);
 }
 
 // ---- brand index / one brand ----
@@ -768,7 +822,7 @@ def build_site(products, stores, updated, out_dir):
         "bestsellers.html": ("Bestsellers · Glassyprice", "Produktet K-beauty më të shitura.",
                              "gp.collection({heading:'Bestsellers',banner:true,photoKey:'bestsellers',lead:'Produktet më të kërkuara.',filter:function(p){return p.best;},%s});" % SEC_FACET),
         "oferta.html": ("Oferta · Glassyprice", "Produktet K-beauty me zbritje.",
-                        "gp.collection({heading:'Oferta',banner:true,photoKey:'oferta',bannerSort:'disc',lead:'Produktet me zbritje, renditur nga zbritja më e madhe.',filter:function(p){return p.offers.some(function(o){return o.compare_at;});},sort:'disc',%s});" % SEC_FACET),
+                        "gp.collection({heading:'Oferta',banner:true,photoKey:'oferta',bannerSort:'disc',lead:'Produktet me zbritje, renditur nga zbritja më e madhe.',filter:function(p){return p._disc>0;},sort:'disc',%s});" % SEC_FACET),
         "marka.html": ("Markat · Glassyprice", "Të gjitha markat K-beauty.", "gp.brands();"),
         "produkt.html": ("Produkt · Glassyprice", "Krahaso çmimet për këtë produkt.", "gp.product();"),
         "kerko.html": ("Kërko · Glassyprice", "Kërko produkte K-beauty.", "gp.search();"),

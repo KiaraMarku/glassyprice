@@ -225,5 +225,35 @@ class TestProductForms(unittest.TestCase):
             self.assertFalse(kb.version_conflict(self.key(a), self.key(b)), (a, b))
 
 
+class TestSizeFamilies(unittest.TestCase):
+    def entry(self, name, vol, n_offers=1, bkey="cerave"):
+        offers = [{"store": f"s{k}", "price": 100, "compare_at": None, "in_stock": True, "url": f"u{k}{vol}"}
+                  for k in range(n_offers)]
+        return {"name": name, "brand": "CeraVe", "volume": vol, "image": None, "offers": offers,
+                "sections": [], "area": None, "type": None, "concerns": [], "kinds": [],
+                "best": False, "pop": n_offers, "_bkey": bkey, "_nkey": " ".join(kb.tokenize(name))}
+
+    def test_sizes_of_same_product_become_one(self):
+        out = kb.group_families([self.entry("Foaming Cleanser 236ml", "236ml", 2),
+                                 self.entry("Foaming Cleanser 473ml", "473ml", 1),
+                                 self.entry("Foaming Cleanser", "1000ml", 1)])
+        self.assertEqual(len(out), 1)
+        p = out[0]
+        self.assertEqual([s["volume"] for s in p["sizes"]], ["236ml", "473ml", "1000ml"])
+        self.assertEqual(p["dsize"], 0)                 # most stores -> default size
+        self.assertEqual(p["name"], "Foaming Cleanser")  # size taken out of the name
+
+    def test_different_products_stay_apart(self):
+        out = kb.group_families([self.entry("Exosome Shot 2000", "30ml"), self.entry("Exosome Shot 7500", "50ml"),
+                                 self.entry("Moisturizing Cream", "50ml"), self.entry("Moisturizing Lotion", "236ml"),
+                                 self.entry("Moisturizing Cream", "340ml", bkey="other")])
+        self.assertEqual(len(out), 5)
+
+    def test_g_and_ml_same_number_is_same_size(self):
+        self.assertEqual(kb.volkey("100g"), kb.volkey("100ml"))
+        out = kb.group_families([self.entry("Snail Cream", "100g"), self.entry("Snail Cream", "100ml")])
+        self.assertEqual(len(out), 2)   # same size -> never two "sizes" of one card
+
+
 if __name__ == "__main__":
     unittest.main()

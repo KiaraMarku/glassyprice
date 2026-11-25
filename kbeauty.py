@@ -183,6 +183,11 @@ def listed_volumes(text):
     return out - {None}
 
 
+def volkey(v):
+    """size for comparing: 100g and 100ml are the same jar labelled two ways"""
+    return v[:-1] + "ml" if v and v.endswith("g") and not v.endswith("ml") else v
+
+
 def tokenize(s):
     s = fold(s).replace("&", " and ")
     s = re.sub(r"\b([bc])\.\s?\1\b\.?", r"\1\1", s)    # "B.B Cream" -> "bb cream"
@@ -357,6 +362,8 @@ def _woo_price(p):
     minor = int(pr.get("currency_minor_unit") or 0)
     price = to_number(int(pr["price"]) / 10 ** minor) if pr.get("price") else None
     reg = to_number(int(pr["regular_price"]) / 10 ** minor) if pr.get("regular_price") else None
+    if not price:            # Beautene reports 0 for some sold-out items: that's "no price", not free
+        price = None
     return price, (reg if reg and price and reg > price else None)
 
 
@@ -453,7 +460,7 @@ def dedupe_within_store(items):
     in-stock listing then the cheapest. Needs normalize() to have run first."""
     seen, out = {}, []
     for it in items:
-        key = (it["store"], it["brand_key"], it["name_key"], it["volume"])
+        key = (it["store"], it["brand_key"], it["name_key"], volkey(it["volume"]))
         if key not in seen:
             seen[key] = len(out)
             out.append(it)
@@ -511,7 +518,7 @@ def match(items, overrides=None):
                 A, B = items[i], items[j]
                 if A["store"] == B["store"]:
                     continue
-                if A["volume"] and B["volume"] and A["volume"] != B["volume"]:
+                if A["volume"] and B["volume"] and volkey(A["volume"]) != volkey(B["volume"]):
                     continue
                 if frozenset((A["url"], B["url"])) in block:
                     continue
@@ -695,8 +702,81 @@ def classify(members):
     return sections, area, ptype, concerns, kinds
 
 
-def build_products(items, clusters, brand_display):
+FAMILY_THRESHOLD = 90    # stricter than MATCH_THRESHOLD: different listings, different sizes
+
+
+def _vol_sort_key(v):
+    m = re.match(r"([\d.]+)(\D+)$", v or "")
+    return (m.group(2), float(m.group(1))) if m else ("", 0.0)
+
+
+def strip_volume(name):
+    """'Glow Booster Serum 15ml' / 'Toner (200 ml)' / 'Cream – 50ml' -> the name without the size"""
+    out = re.sub(r"[\s(\[]*(?<![A-Za-z0-9.])\d+(?:[.,]\d+)?\s*(?:ml|gr|g|copë|cope|pcs)\b[)\]]*",
+                 " ", name, flags=re.I)
+    return re.sub(r"\s+", " ", re.sub(r"\s*[–\-|,]\s*$", "", out.strip())).strip() or name
+
+
+def group_families(entries):
+    """Join per-size products that are the same product in another size: same brand,
+    names agree apart from the size (no version/form conflict), every size distinct.
+    Each family becomes one product with sizes[]; size-less products stay alone."""
+    parent = list(range(len(entries)))
+    vols = [{volkey(e["volume"])} if e["volume"] else None for e in entries]
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    by_brand = defaultdict(list)
+    for i, e in enumerate(entries):
+        if e["volume"]:
+            by_brand[e["_bkey"]].append(i)
+    edges = []
+    for idx in by_brand.values():
+        for a in range(len(idx)):
+            for b in range(a + 1, len(idx)):
+                A, B = entries[idx[a]], entries[idx[b]]
+                if volkey(A["volume"]) == volkey(B["volume"]) or version_conflict(A["_nkey"], B["_nkey"]):
+                    continue
+                sc = similarity(A["_nkey"], B["_nkey"])
+                if sc >= FAMILY_THRESHOLD:
+                    edges.append((sc, idx[a], idx[b]))
+    edges.sort(reverse=True)
+    for _, i, j in edges:
+        ri, rj = find(i), find(j)
+        if ri != rj and not (vols[ri] & vols[rj]):      # never two of the same size in a family
+            parent[rj] = ri
+            vols[ri] |= vols[rj]
+
+    fams = defaultdict(list)
+    for i in range(len(entries)):
+        fams[find(i)].append(entries[i])
     products = []
+    for members in fams.values():
+        members.sort(key=lambda e: _vol_sort_key(volkey(e["volume"])))
+        # default size: carried by the most stores, then in stock, then most popular
+        default = max(members, key=lambda e: (len(e["offers"]), any(o["in_stock"] for o in e["offers"]), e["pop"]))
+        p = {k: v for k, v in default.items() if not k.startswith("_")}
+        if len(members) > 1:
+            p["name"] = strip_volume(default["name"])
+            p["sizes"] = [{"volume": m["volume"], "offers": m["offers"], "image": m["image"] or default["image"]}
+                          for m in members]
+            p["dsize"] = members.index(default)
+            p["image"] = default["image"] or next((m["image"] for m in members if m["image"]), None)
+            for k in ("sections", "concerns", "kinds"):
+                p[k] = sorted({x for m in members for x in (m[k] or [])}, key=lambda x: (default[k] or []).index(x)
+                              if x in (default[k] or []) else 99)
+            p["best"] = any(m["best"] for m in members)
+            p["pop"] = max(m["pop"] for m in members)
+        products.append(p)
+    return products
+
+
+def build_products(items, clusters, brand_display):
+    entries = []
     for c in clusters:
         members = sorted((items[i] for i in c), key=lambda it: TITLE_PRIORITY.index(it["store"])
                          if it["store"] in TITLE_PRIORITY else 99)
@@ -706,7 +786,12 @@ def build_products(items, clusters, brand_display):
             key=lambda o: (not o["in_stock"], o["price"] if o["price"] is not None else 1e12))
         bkey = lead["brand_key"]
         sections, area, ptype, concerns, kinds = classify(members)
-        products.append({
+        best = any(m.get("bestseller") for m in members)
+        # Popularity proxy (no sales data): a store tagging it "bestseller" is the
+        # strongest signal; carried by more stores = more mainstream; in stock counts.
+        # This is the default order on every page.
+        pop = (5 if best else 0) + 2 * len(offers) + (1 if any(o["in_stock"] for o in offers) else 0)
+        entries.append({
             "name": pretty(lead["title"]),
             "brand": brand_display.get(bkey) or (lead["brand"] or bkey).title(),
             "volume": next((m["volume"] for m in members if m["volume"]), None),
@@ -714,14 +799,10 @@ def build_products(items, clusters, brand_display):
             "offers": offers,
             "sections": sections, "area": area, "type": ptype,
             "concerns": concerns, "kinds": kinds,
-            "best": any(m.get("bestseller") for m in members),
+            "best": best, "pop": pop,
+            "_bkey": bkey, "_nkey": lead["name_key"],
         })
-    # Popularity proxy (no sales data): a store tagging it "bestseller" is the
-    # strongest signal; carried by more stores = more mainstream; in stock counts.
-    # This is the default order on every page.
-    for p in products:
-        in_stock = any(o["in_stock"] for o in p["offers"])
-        p["pop"] = (5 if p["best"] else 0) + 2 * len(p["offers"]) + (1 if in_stock else 0)
+    products = group_families(entries)
     products.sort(key=lambda p: (-p["pop"], -len(p["offers"]), p["brand"].lower(), p["name"].lower()))
     for i, p in enumerate(products):
         p["i"] = i
@@ -784,6 +865,7 @@ def main():
             else:
                 raw_file.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
         parsed = PARSERS[s["platform"]](s, raw)
+        parsed = [it for it in parsed if it["price"] != 0]   # free gifts ("100% off"), not for sale
         print(f"  {s['name']}: {len(parsed)} items")
         items += parsed
 
@@ -807,8 +889,10 @@ def main():
     n_pages = build_site(products, stores, updated, Path(args.out))
 
     multi = sum(1 for p in products if len(p["offers"]) > 1)
+    fams = sum(1 for p in products if p.get("sizes"))
     guessed = sum(1 for it in items if it["brand_guessed"])
-    print(f"\n{len(items)} items -> {len(products)} products, {multi} found in 2+ stores")
+    print(f"\n{len(items)} items -> {len(products)} products, {multi} found in 2+ stores, "
+          f"{fams} with several sizes")
     print(f"{guessed} items had no known brand (first word used); add them to EXTRA_BRANDS")
     print(f"Review matches in data/matches.csv, built {n_pages} pages at {args.out}/index.html")
 
