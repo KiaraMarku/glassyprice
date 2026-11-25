@@ -253,7 +253,7 @@ select.chip{appearance:none}
 .offer:hover{border-color:var(--line);text-decoration:none}
 .offer.best{background:var(--accent-soft)}
 .offer.out{color:var(--muted)}
-.dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--sage-ink)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none;background:#6cc4ad}   /* in-stock dot: lighter logo aquamarine */
 .offer.out .dot{background:var(--no)}
 .store{flex:1;font-size:14px}
 .tag{font-size:11px;font-weight:700;color:var(--accent);margin-left:5px}
