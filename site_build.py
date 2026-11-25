@@ -892,7 +892,7 @@ def build_site(products, stores, updated, out_dir):
         "sete":   "facets:[]",
     }
     pages = {
-        "index.html": ("Glassyprice · Krahaso çmimet K-beauty në Shqipëri",
+        "index.html": ("Glassyprice",
                        "Krahaso çmimin dhe gjendjen e çdo produkti K-beauty në dyqanet shqiptare.", "gp.landing();"),
         "bestsellers.html": ("Bestsellers · Glassyprice", "Produktet K-beauty më të shitura.",
                              "gp.collection({heading:'Bestsellers',banner:true,photoKey:'bestsellers',lead:'Produktet më të kërkuara.',filter:function(p){return p.best;},%s});" % SEC_FACET),
