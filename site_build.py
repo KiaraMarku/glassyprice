@@ -106,20 +106,29 @@ a:hover{text-decoration:underline}
 .ac .p{margin-left:auto;font-weight:700;white-space:nowrap;font-size:13px;font-variant-numeric:tabular-nums}
 .ac .all{padding:11px 13px;font-size:13px;color:var(--accent);font-weight:600;border-top:1px solid var(--line)}
 .ac .no{padding:14px 13px;color:var(--muted);font-size:13px}
-/* phone header: row 1 = logo + search, row 2 = one swipeable line of links */
+/* icon buttons (search / menu) — phone only */
+.nav-btns{display:none}
+.nb{width:40px;height:40px;border:none;background:transparent;color:var(--ink);border-radius:12px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.nb:active,.nb[aria-expanded="true"]{background:var(--accent-soft);color:var(--accent)}
+.nb svg{width:22px;height:22px}
+.nb .ic-x{display:none}
+.nb[aria-expanded="true"] .ic-open{display:none}
+.nb[aria-expanded="true"] .ic-x{display:block}
+/* phone header: one row [logo ... search menu]; menu and search open as panels below */
 @media(max-width:760px){
-  .nav-in{padding:10px 14px 0;gap:10px 12px;flex-wrap:wrap}
+  .nav-in{padding:8px 10px 8px 14px;gap:0;flex-wrap:wrap}
   .logo{font-size:20px;gap:7px}
   .logo-icon{width:26px;height:26px}
-  .nav-search{order:2;flex:1 1 0;width:auto;max-width:none;min-width:0}
-  .nav-search input{font-size:16px;padding:7px 12px 7px 34px}   /* 16px stops iOS zoom-on-focus */
-  .nav-search .mag{left:12px;width:15px;height:15px}
-  .nav-links{order:3;flex:0 0 calc(100% + 28px);margin:0 -14px;padding:2px 14px 9px;
-    justify-content:flex-start;flex-wrap:nowrap;gap:20px;overflow-x:auto;
-    -webkit-overflow-scrolling:touch;scrollbar-width:none}
-  .nav-links::-webkit-scrollbar{display:none}
-  .nav-links a{font-size:15px}
-  .ac{position:fixed;top:56px;left:10px;right:10px}
+  .nav-btns{display:flex;gap:2px;margin-left:auto;order:1}
+  .nav-links{display:none;order:3;flex:0 0 100%;flex-direction:column;gap:0;padding:6px 0 2px}
+  .nav.menu-open .nav-links{display:flex}
+  .nav-links a{font-size:18px;padding:13px 4px;border-top:1px solid var(--line)}
+  .nav-links a::after{display:none}
+  .nav-search{display:none;order:2;flex:0 0 100%;width:100%;max-width:none;margin:10px 0 4px}
+  .nav.search-open .nav-search{display:block}
+  .nav-search input{font-size:16px;padding:10px 14px 10px 40px;background:#fff}   /* 16px stops iOS zoom-on-focus */
+  .ac{max-height:65vh;overflow-y:auto}
 }
 
 /* hero — full-bleed gradient entrance */
@@ -632,6 +641,14 @@ document.getElementById('nav').className='nav';
 document.getElementById('nav').innerHTML =
   '<div class="nav-in"><a class="logo" href="index.html">'+
   '<img class="logo-icon" src="assets/logo-icon.png" alt="">'+wordmark()+'</a>'+
+  '<div class="nav-btns">'+
+  '<button type="button" class="nb" data-open="search-open" aria-label="Kërko" aria-expanded="false">'+
+  '<svg class="ic-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg>'+
+  '<svg class="ic-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>'+
+  '<button type="button" class="nb" data-open="menu-open" aria-label="Menu" aria-expanded="false">'+
+  '<svg class="ic-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>'+
+  '<svg class="ic-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>'+
+  '</div>'+
   '<nav class="nav-links"><a href="fytyra.html">Fytyra</a><a href="floket.html">Flokët</a>'+
   '<a href="trupi.html">Trupi</a><a href="makeup.html">Make Up</a>'+
   '<a href="oferta.html">Oferta</a><a href="bestsellers.html">Bestsellers</a><a href="marka.html">Markat</a></nav>'+
@@ -644,6 +661,18 @@ document.querySelectorAll('.nav-links a').forEach(function(a){
   if(a.getAttribute('href')===here) a.className='active';
 });
 attachLiveSearch(document.querySelector('.nav-search'), document.querySelector('.nav-search input'));
+// phone: search / menu buttons toggle one panel at a time
+(function(){
+  var nav=document.getElementById('nav'), btns=nav.querySelectorAll('.nb');
+  btns.forEach(function(b){
+    b.addEventListener('click',function(){
+      var cls=b.getAttribute('data-open'), opening=!nav.classList.contains(cls);
+      btns.forEach(function(o){nav.classList.remove(o.getAttribute('data-open'));o.setAttribute('aria-expanded','false');});
+      if(opening){nav.classList.add(cls);b.setAttribute('aria-expanded','true');
+        if(cls==='search-open') nav.querySelector('.nav-search input').focus();}
+    });
+  });
+})();
 
 var when = new Date(GP.updated);
 document.getElementById('foot').innerHTML =
