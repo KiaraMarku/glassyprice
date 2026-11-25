@@ -175,5 +175,55 @@ class TestMatching(unittest.TestCase):
         self.assertEqual(toner["name"], "Dr. Sante Azulene Soother Toner")
 
 
+class TestSizes(unittest.TestCase):
+    def test_listed_volumes(self):
+        self.assertEqual(kb.listed_volumes("Price range: 399 L - 3 490 L 30 / 80 ml"), {"30ml", "80ml"})
+        self.assertEqual(kb.listed_volumes("50ml, 100ml"), {"50ml", "100ml"})
+        self.assertEqual(kb.listed_volumes("1,5 / 3 g"), {"1.5g", "3g"})
+        self.assertEqual(kb.listed_volumes("990 L"), set())
+
+    def test_woo_variations_become_one_item_per_size(self):
+        # REAL shape (trimmed): Beautene Aestura cream, 30ml 399 L / 80ml 3490 L
+        parent = {"id": 65364, "type": "variable", "name": "AESTURA &#8211; Renew Atobarrier 365 Cream",
+                  "permalink": "https://beautene.al/product/aestura/", "brands": [{"name": "Aestura"}],
+                  "prices": {"price": "399", "regular_price": "890", "currency_minor_unit": 0},
+                  "price_html": "399 L - 3 490 L 30 / 80 ml", "is_in_stock": True, "images": []}
+        def var(vid, size, price, reg, stock=True):
+            return {"id": vid, "type": "variation", "parent": 65364, "name": parent["name"],
+                    "variation": f"Zgjidhni dozimin:: {size}", "is_in_stock": stock, "images": [],
+                    "permalink": f"https://beautene.al/product/aestura/?size={size}",
+                    "prices": {"price": str(price), "regular_price": str(reg), "currency_minor_unit": 0}}
+        items = kb.parse_woocommerce(S["beautene"], [parent, var(71272, "30ml", 399, 890),
+                                                     var(65365, "80ml", 3490, 3490)])
+        by_vol = {i["volume"]: i for i in items}
+        self.assertEqual(set(by_vol), {"30ml", "80ml"})
+        self.assertEqual(by_vol["80ml"]["price"], 3490)
+        self.assertIsNone(by_vol["80ml"]["compare_at"])
+        self.assertEqual((by_vol["30ml"]["price"], by_vol["30ml"]["compare_at"]), (399, 890))
+
+    def test_woo_multi_size_without_variations_is_skipped(self):
+        p = woo("Some Cream", 399, "Brand", unit_html="399 L - 3 490 L 30 / 80 ml")
+        self.assertEqual(kb.parse_woocommerce(S["beautene"], [p]), [])
+
+
+class TestProductForms(unittest.TestCase):
+    def key(self, s):
+        return " ".join(kb.tokenize(s))
+
+    def test_different_forms_conflict(self):
+        for a, b in [("Atobarrier 365 Cream", "Atobarrier 365 Cream Mist"),
+                     ("Pure Body Lotion", "Pure Body Wash"),
+                     ("Intensive Lifting Ampoule", "Intensive Lifting Cream"),
+                     ("Centella Cream", "Centella BB Cream"),
+                     ("Marine Pearl Sun Stick", "Marine Pearl Sun Spray")]:
+            self.assertTrue(kb.version_conflict(self.key(a), self.key(b)), (a, b))
+
+    def test_form_word_only_on_one_side_is_same_product(self):
+        for a, b in [("Niacinamide 15%", "The Niacinamide 15% Serum"),
+                     ("Cleansing Foam", "Foaming Cleanser"),
+                     ("Perfect Cover Serum BB Cream", "Perfect Cover Serum B.B Cream")]:
+            self.assertFalse(kb.version_conflict(self.key(a), self.key(b)), (a, b))
+
+
 if __name__ == "__main__":
     unittest.main()

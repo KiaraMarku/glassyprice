@@ -98,12 +98,26 @@ VERSION_WORDS = {"ex", "pro", "plus", "mini", "max", "lite", "light", "rich",
                  "ii", "iii", "iv", "edition", "set", "kit", "duo", "refill",
                  "travel", "jumbo", "sample", "spf",
                  # a mask / pad / patch is a different product from the cream or serum
-                 "mask", "maske", "pack", "sheet", "sheets", "patch", "patches", "pad", "pads"}
+                 "mask", "maske", "pack", "sheet", "sheets", "patch", "patches", "pad", "pads",
+                 # "Cream" vs "Cream Mist", "Cleansing Oil" vs "Cleansing Oil Wipes"
+                 "mist", "wipes", "wipe",
+                 # "Eye Cream" / "BB Cream" are not the plain "Cream"
+                 "eye", "bb", "cc"}
+# Product forms. Only a conflict when EACH name has a form the other lacks
+# ("Body Lotion" vs "Body Wash"). One store just adding "Serum" to the title
+# ("Niacinamide 15%" vs "Niacinamide 15% Serum") is the same product.
+FORM_WORDS = {"cream", "serum", "ampoule", "essence", "lotion", "toner", "cleanser", "wash",
+              "foam", "oil", "balm", "gel", "powder", "stick", "spray", "cushion", "milk"}
 
 
 def version_conflict(a, b):
-    diff = set(a.split()) ^ set(b.split())
-    return any(t in VERSION_WORDS or any(c.isdigit() for c in t) for t in diff)
+    norm = {"foaming": "foam", "creme": "cream", "creams": "cream", "serums": "serum"}
+    sa = {norm.get(t, t) for t in a.split()}
+    sb = {norm.get(t, t) for t in b.split()}
+    diff = sa ^ sb
+    if any(t in VERSION_WORDS or any(c.isdigit() for c in t) for t in diff):
+        return True
+    return bool((sa - sb) & FORM_WORDS) and bool((sb - sa) & FORM_WORDS)
 VOL_RE = re.compile(
     r"(?<![a-z0-9.])(\d+(?:[.,]\d+)?)\s*"
     r"(ml|gr|grams?|g|cope|copa|pcs|pc|pairs?|sheets?)(?![a-z])"
@@ -154,8 +168,24 @@ def parse_volume(text, default_unit=None):
     return f"{num}{unit}"
 
 
+LIST_VOL_RE = re.compile(
+    r"(?<![a-z0-9.])((?:\d+(?:[.,]\d+)?(?:\s*[/|]\s*|,\s+))+\d+(?:[.,]\d+)?)\s*"
+    r"(ml|gr|grams?|g|cope|copa|pcs|pc|pairs?|sheets?)(?![a-z])"
+)
+
+
+def listed_volumes(text):
+    """every size a text mentions: '30 / 80 ml' -> {'30ml','80ml'}, '50ml, 100ml' -> both"""
+    f = fold(text or "")
+    out = {parse_volume(n.strip() + u) for nums, u in LIST_VOL_RE.findall(f)
+           for n in re.split(r"\s*[/|]\s*|,\s+", nums)}
+    out |= {parse_volume(n + u) for n, u in VOL_RE.findall(f)}
+    return out - {None}
+
+
 def tokenize(s):
     s = fold(s).replace("&", " and ")
+    s = re.sub(r"\b([bc])\.\s?\1\b\.?", r"\1\1", s)    # "B.B Cream" -> "bb cream"
     s = VOL_RE.sub(" ", s)                         # volume is matched separately
     s = re.sub(r"[^a-z0-9.]+", " ", s)
     s = re.sub(r"(?<!\d)\.|\.(?!\d)", " ", s)      # keep 0.1, drop other dots
@@ -233,19 +263,23 @@ def fetch_shopify(base):
 
 
 def fetch_woocommerce(base):
-    out, page = [], 1
-    while page <= 200:
-        try:
-            data = get_json(f"{base}/wp-json/wc/store/v1/products?per_page=100&page={page}")
-        except HTTPError as e:
-            if e.code == 400:      # WooCommerce answers 400 past the last page
+    """Products, then every variation (type=variation): a variable product's own
+    price is only its cheapest option, so each size needs its variation's price."""
+    out = []
+    for extra in ("", "&type=variation"):
+        page = 1
+        while page <= 200:
+            try:
+                data = get_json(f"{base}/wp-json/wc/store/v1/products?per_page=100&page={page}{extra}")
+            except HTTPError as e:
+                if e.code == 400:      # WooCommerce answers 400 past the last page
+                    break
+                raise
+            if not data:
                 break
-            raise
-        if not data:
-            break
-        out += data
-        page += 1
-        time.sleep(REQUEST_DELAY)
+            out += data
+            page += 1
+            time.sleep(REQUEST_DELAY)
     return out
 
 # ---------------------------------------------------------------- parsing into one shape
@@ -318,29 +352,70 @@ def parse_shopify(store, prods):
     return items
 
 
+def _woo_price(p):
+    pr = p.get("prices") or {}
+    minor = int(pr.get("currency_minor_unit") or 0)
+    price = to_number(int(pr["price"]) / 10 ** minor) if pr.get("price") else None
+    reg = to_number(int(pr["regular_price"]) / 10 ** minor) if pr.get("regular_price") else None
+    return price, (reg if reg and price and reg > price else None)
+
+
+def _woo_img(p):
+    imgs = p.get("images") or []
+    return (imgs[0].get("thumbnail") or imgs[0].get("src")) if imgs else None
+
+
 def parse_woocommerce(store, prods):
+    """One item per size. Variable products use their variations (each has its own
+    size/price/stock); shades of the same size collapse to the cheapest one."""
+    variations = {}
+    for v in prods:
+        if v.get("type") == "variation" and v.get("parent"):
+            variations.setdefault(v["parent"], []).append(v)
+
     items = []
     for p in prods:
+        if p.get("type") == "variation":
+            continue
         title = clean(p.get("name"))
         brands = p.get("brands") or []
-        pr = p.get("prices") or {}
-        minor = int(pr.get("currency_minor_unit") or 0)
-        price = to_number(int(pr["price"]) / 10 ** minor) if pr.get("price") else None
-        reg = to_number(int(pr["regular_price"]) / 10 ** minor) if pr.get("regular_price") else None
-        vol = (parse_volume(title)
-               or parse_volume(strip_tags(p.get("price_html")))
-               or parse_volume(strip_tags(p.get("short_description"))))
+        brand = clean(brands[0]["name"]) if brands else None
         cats = [fold(c.get("name", "")) for c in (p.get("categories") or [])]
         best = any("bestseller" in c or "best seller" in c for c in cats)
-        imgs = p.get("images") or []
-        items.append({
-            "store": store["id"], "title": title,
-            "brand": clean(brands[0]["name"]) if brands else None, "volume": vol,
-            "price": price, "compare_at": reg if reg and price and reg > price else None,
-            "in_stock": bool(p.get("is_in_stock")), "url": p.get("permalink"),
-            "image": imgs[0].get("thumbnail") or imgs[0].get("src") if imgs else None,
-            "cats": cats, "bestseller": best,
-        })
+        base = {"store": store["id"], "title": title, "brand": brand, "cats": cats, "bestseller": best}
+        own_vol = parse_volume(title) or parse_volume(strip_tags(p.get("short_description")))
+        prod_img = _woo_img(p)
+
+        vs = variations.get(p.get("id")) or []
+        if vs:
+            groups = {}
+            for v in vs:
+                vol = parse_volume(v.get("variation")) or own_vol
+                price, cmp_at = _woo_price(v)
+                g = groups.get(vol)
+                if g is None or (price is not None and (g["price"] is None or price < g["price"])):
+                    avail = (g["avail"] if g else False) or bool(v.get("is_in_stock"))
+                    groups[vol] = {"price": price, "cmp": cmp_at, "avail": avail,
+                                   "url": v.get("permalink") or p.get("permalink"),
+                                   "img": _woo_img(v) or prod_img}
+                else:
+                    g["avail"] = g["avail"] or bool(v.get("is_in_stock"))
+            for vol, g in groups.items():
+                items.append({**base, "volume": vol, "price": g["price"], "compare_at": g["cmp"],
+                              "in_stock": g["avail"], "url": g["url"], "image": g["img"]})
+            continue
+
+        # simple product (or variable product whose variations weren't fetched)
+        vol = own_vol
+        listed = listed_volumes(strip_tags(p.get("price_html")))
+        if not vol:
+            if len(listed) > 1:
+                continue        # several sizes but one price: can't compare it safely
+            vol = next(iter(listed), None)
+        price, cmp_at = _woo_price(p)
+        items.append({**base, "volume": vol, "price": price, "compare_at": cmp_at,
+                      "in_stock": bool(p.get("is_in_stock")), "url": p.get("permalink"),
+                      "image": prod_img})
     return items
 
 
