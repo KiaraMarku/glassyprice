@@ -120,8 +120,13 @@ def fold(s):
     return "".join(c for c in s if not unicodedata.combining(c)).lower()
 
 
+# emoji/pictographs (+ variation selector, zero-width joiner) that stores put in titles
+EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200D]")
+
+
 def clean(s):
-    return re.sub(r"\s+", " ", html.unescape(s or "")).strip()
+    s = EMOJI.sub(" ", html.unescape(s or ""))
+    return re.sub(r"\s+", " ", s).strip()
 
 
 def strip_tags(s):

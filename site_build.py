@@ -48,15 +48,15 @@ MAKEUPKINDS = {"mu_fytyre": "Fytyra", "mu_syte": "Sytë", "mu_buze": "Buzët"}
 
 CSS = r""":root{
   color-scheme:light;      /* always light — ignore the OS dark preference */
-  /* palette matched to the logo: mint green + pastel pink on soft white */
+  /* palette matched to the logo: aquamarine (logo #a2d8c6, hue ~162) + pastel pink on soft white */
   --bg:#fdf8f9; --card:#ffffff; --ink:#3a3137; --muted:#8c8187; --line:#efe6ea;
   --pink:#f4aeb9;          /* the literal logo pink — fills, buttons, highlights */
-  --mint:#a5d9c5;          /* the literal logo mint */
+  --mint:#a2d8c6;          /* the literal logo mint */
   --accent:#c25570;        /* same-hue pink, used only for link/label text */
   --accent-soft:#fdebee;   /* cheapest row + active chips */
-  --brand-mint:#83c4aa; --brand-pink:#ec97a6;    /* logo wordmark: glass / price */
+  --brand-mint:#86cbb8; --brand-pink:#ec97a6;    /* logo wordmark: glass / price */
   --pinkbadge:#fbe2e8; --pinkbadge-ink:#b23b5a;  /* sale / bestseller badge (pink) */
-  --sage:#d3ecdd; --sage-ink:#276b4d;            /* in-stock badge (mint) */
+  --sage:#d6efe9; --sage-ink:#23705f;            /* in-stock badge (mint) */
   --no:#a79da2;
   --shadow:0 1px 2px rgba(59,46,53,.04), 0 6px 20px rgba(158,74,110,.06);
 }
@@ -125,7 +125,7 @@ a:hover{text-decoration:underline}
 /* hero — full-bleed gradient entrance */
 .hero{position:relative;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);margin-top:-20px;min-height:78vh;overflow:hidden;
   display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:36px 22px 54px;
-  background:linear-gradient(105deg,#fbe3ec 0%,#fdeef2 50%,#e7f5ef 100%)}
+  background:linear-gradient(105deg,#fbe3ec 0%,#fdeef2 50%,#e3f5f0 100%)}
 .hero-in{position:relative;z-index:2;width:100%;max-width:640px;margin:auto}
 .hero-logo{display:block;margin:0 auto}
 .hero-logo:hover{text-decoration:none}
