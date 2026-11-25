@@ -183,18 +183,29 @@ a:hover{text-decoration:underline}
 .sec .more{margin-left:auto;font-size:14px}
 .lead{color:var(--muted);margin:2px 0 0}
 
-/* category page header — clean editorial, no gradient */
-.pagehead{display:flex;align-items:center;gap:24px;margin:2px 0 22px;padding:2px 2px 20px;border-bottom:1px solid var(--line)}
+/* category page header — soft gradient card, same palette as the home hero */
+.pagehead{display:flex;align-items:center;gap:20px;margin:6px 0 18px;padding:26px 30px;border-radius:24px;
+  background:linear-gradient(105deg,#fbe3ec 0%,#fdeef2 55%,#e3f5f0 100%)}
 .pagehead .ph-txt{flex:1;min-width:0}
-.pagehead h1{margin:0 0 5px;font-size:clamp(26px,4.4vw,40px)}
-.pagehead .ph-txt p{margin:0;color:var(--muted);font-size:15px}
-.pagehead .ph-img{width:116px;height:116px;border-radius:50%;object-fit:cover;flex:none;
-  border:4px solid #fff;box-shadow:0 10px 26px rgba(120,100,110,.16);outline:1px solid var(--line);outline-offset:-1px}
-@media(max-width:560px){.pagehead .ph-img{width:86px;height:86px}}
+.pagehead h1{margin:0 0 6px;font-size:clamp(26px,4.4vw,40px)}
+.pagehead .ph-txt p{margin:0;color:var(--ink);opacity:.7;font-size:15px}
+.pagehead .ph-img{width:112px;height:112px;border-radius:50%;object-fit:cover;flex:none;
+  border:4px solid #fff;box-shadow:0 10px 26px rgba(120,100,110,.16);background:#fff}
+@media(max-width:560px){.pagehead{padding:18px;border-radius:18px;gap:14px}.pagehead .ph-img{width:76px;height:76px}}
 
 /* filter panel — keep category selection clean */
 .filters-panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px 18px;margin:0 0 20px}
 .filters-panel .facet-group:last-child{margin-bottom:0}
+/* phones: filters fold away behind a "Filtro" button so products show first */
+.chip.filt-btn{display:none}
+.filt-btn .fcount{margin-left:6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--accent);
+  color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.filt-btn .fcount:empty{display:none}
+@media(max-width:760px){
+  .chip.filt-btn{display:inline-flex;align-items:center;margin:0 0 12px}
+  .filters-panel{display:none}
+  .filters-panel.open{display:block}
+}
 
 /* tiles */
 .tiles{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(148px,1fr))}
@@ -576,7 +587,7 @@ function collection(cfg){
       bimg = pool.length ? pool[0].image : '';
     }
     head = '<div class="pagehead"><div class="ph-txt"><h1>'+esc(cfg.heading)+'</h1>'+
-      (cfg.lead?'<p>'+esc(cfg.lead)+'</p>':'')+'</div>'+
+      '<p>'+(cfg.lead?esc(cfg.lead)+' · ':'')+base.length+' produkte</p></div>'+
       (bimg?'<img class="ph-img" src="'+esc(bimg)+'" alt="">':'')+'</div>';
   } else {
     head = '<div class="sec"><h2>'+(cfg.icon?'<span class="hic">'+icon(cfg.icon)+'</span>':'')+esc(cfg.heading)+'</h2></div>'+
@@ -584,7 +595,10 @@ function collection(cfg){
   }
 
   app.innerHTML = head + areaNav +
-    (hasFilters?'<div class="filters-panel">'+facetsHTML+'</div>':'')+
+    (facets.length?'<button type="button" class="chip filt-btn" id="filtBtn" aria-expanded="false">'+
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>'+
+      'Filtro<span class="fcount" id="fcount"></span></button>':'')+
+    (hasFilters?'<div class="filters-panel" id="fpanel">'+facetsHTML+'</div>':'')+
     '<div class="toolbar">'+
       '<input type="search" id="q" placeholder="Kërko brenda kësaj faqeje…" autocomplete="off">'+
       '<button class="chip" id="fStock" aria-pressed="false">Vetëm në gjendje</button>'+
@@ -609,6 +623,8 @@ function collection(cfg){
     });
     r = sortList(r, st.sort);
     document.getElementById('count').textContent = r.length+' produkte';
+    var fc = document.getElementById('fcount');
+    if(fc) fc.textContent = facets.filter(function(g){return st.f[g.id];}).length || '';
     grid(r, list);
   }
   var t;
@@ -620,6 +636,11 @@ function collection(cfg){
   if(cfg.area) document.querySelectorAll('#fa a').forEach(function(b){
     b.onclick=function(){st.area=b.dataset.area;
       document.querySelectorAll('#fa a').forEach(function(x){x.className=(x===b?'active':'');});run();};});
+  var fb = document.getElementById('filtBtn');
+  if(fb) fb.onclick = function(){
+    var open = document.getElementById('fpanel').classList.toggle('open');
+    fb.setAttribute('aria-expanded', open);
+  };
   facets.forEach(function(g){
     document.querySelectorAll('#fg-'+g.id+' .chip').forEach(function(b){
       b.onclick=function(){var k=b.dataset.k;st.f[g.id]=st.f[g.id]===k?'':k;
