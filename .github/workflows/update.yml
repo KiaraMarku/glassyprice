@@ -1,4 +1,4 @@
-# Refreshes prices every morning and publishes site/ to GitHub Pages.
+# Refreshes prices every 3 hours and publishes site/ to GitHub Pages.
 # Setup: repo Settings > Pages > Source: "GitHub Actions".
 name: update-prices
 
@@ -6,9 +6,15 @@ on:
   push:
     branches: [master]      # deploy on every push to master
   schedule:
-    - cron: "17 5 * * *"   # 05:17 UTC daily (07:17 Tirana summer time)
-    - cron: "17 17 * * *"  # 17:17 UTC daily (19:17 Tirana) — twice daily per the plan
+    # Every 3 hours. GitHub delays scheduled runs by hours under load (seen: 7-10h)
+    # and sometimes skips them, so frequent runs keep prices fresh anyway.
+    - cron: "41 */3 * * *"
   workflow_dispatch:        # "Run workflow" button for manual refresh
+
+# delayed runs can arrive together: run them one at a time, never two deploys at once
+concurrency:
+  group: update-prices
+  cancel-in-progress: false
 
 permissions:
   contents: write
